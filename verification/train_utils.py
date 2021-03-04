@@ -223,7 +223,8 @@ class Trainer:
 
 
 def evaluate(model: torch.nn.Module, dataloader,
-             estim_quality: bool, threshold: float) -> List[int]:
+             estim_quality: bool, threshold: float,
+             print_metrics: bool=True, binarize: bool=True) -> List[int]:
     """
     Making predictions with model.
     :param model: model instance to run;
@@ -251,10 +252,13 @@ def evaluate(model: torch.nn.Module, dataloader,
             if not type(data) in (tuple, list):
                 data = (data,)
 
-            outputs = model(*data)
-            batch_pred = [1 if out > threshold else 0 for out in outputs.detach().numpy()]
+            outputs = torch.nn.functional.sigmoid(model(*data))
+            if binarize:
+                batch_pred = [1 if out > threshold else 0 for out in outputs.detach().numpy()]
+            else:
+                batch_pred = outputs.detach().tolist()
 
-            # Store labels
+                # Store labels
             if estim_quality:
                 true_labels.extend(target.numpy().astype(int).tolist())
 
@@ -264,7 +268,7 @@ def evaluate(model: torch.nn.Module, dataloader,
     # Measure how long the validation run took.
     validation_time = format_time(time.time() - eval_start)
 
-    if estim_quality:
+    if estim_quality and print_metrics:
         compute_metrics(true_labels, pred_labels)
 
     print("\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
@@ -287,7 +291,7 @@ def init_model(dir: str='models_checkpoints',
 
 
 def aggregate_SP_predictions(predictions: List[float],
-                             threshold: float) -> int:
+                             threshold: float, policy: str='mean') -> int:
     """
     Aggregate predictions for full session
     from list of predictions for each SP movement.
@@ -296,7 +300,14 @@ def aggregate_SP_predictions(predictions: List[float],
     :return: 1 - if verification is "successful"
              0 - if verification is "failed"
     """
-    return 1 if sum(predictions) / len(predictions) > threshold else 0
+    if policy == "mean":
+        return 1 if np.mean(predictions) > threshold else 0
+    elif policy == "max":
+        return 1 if np.max(predictions) > threshold else 0
+    else:
+        print("Specify correct predictions aggregation policy and try again.")
+        return 0
+
 
 
 #---------------------------- UTILITIES ----------------------------
@@ -363,9 +374,6 @@ def load_model(model, dir: str, filename: str):
 
 def compute_metrics(true_labels: List[int],
                     pred_labels: List[int]) -> NoReturn:
-    assert (len(true_labels) == len(pred_labels),
-            "Labels lists must have the same length.")
-
     print("***** Eval results {} *****")
 
     ac = accuracy_score(true_labels, pred_labels)

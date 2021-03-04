@@ -203,18 +203,18 @@ def create_verification_dataloader(data_samples_1: pd.DataFrame,
             if i < max_samples:
                 ex0 = data_samples_1.iloc[pair[0]]
                 ex1 = data_samples_2.iloc[pair[1]]
-                pairs.append(ContrastiveExample(example_0=ex0[feature_columns].values,
-                                                example_1=ex1[feature_columns].values,
+                pairs.append(ContrastiveExample(example_0=ex0[feature_columns].values.astype(np.float32),
+                                                example_1=ex1[feature_columns].values.astype(np.float32),
                                                 label=1 if target_col and (ex0[target_col] == ex1[target_col]) else 0))
             else:
                 return DataLoader(ContrastiveDataset(pairs), batch_size=batch_size, num_workers=0)
     else:
         # Take them all
-        pairs = list(product([ds1_inds, ds2_inds]))
-        for pair in pairs:
+        inds_pairs = list(product(ds1_inds, ds2_inds))
+        for pair in inds_pairs:
             ex0 = data_samples_1.iloc[pair[0]]
             ex1 = data_samples_2.iloc[pair[1]]
-            pairs.append(ContrastiveExample(example_0=ex0[feature_columns].values,
-                                            example_1=ex1[feature_columns].values,
+            pairs.append(ContrastiveExample(example_0=ex0[feature_columns].values.astype(np.float32),
+                                            example_1=ex1[feature_columns].values.astype(np.float32),
                                             label=1 if target_col and (ex0[target_col] == ex1[target_col]) else 0))
         return DataLoader(ContrastiveDataset(pairs), batch_size=batch_size, num_workers=0)

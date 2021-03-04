@@ -118,6 +118,7 @@ class VerificationStand:
 
         verification_results = {}
         for id, session in others_data.groupby(by='session_id'):
+            session = session.reset_index(drop=True)
             result = self.__evaluate_session(owner_data, session, estimate_quality=estimate_quality,
                                              moves_threshold=verification_params.get("moves_threshold", 0.5),
                                              session_threshold=verification_params.get("session_threshold", 0.5))
@@ -136,8 +137,8 @@ class VerificationStand:
                                                     feature_columns=self._fgen._feature_columns,
                                                     target_col=self._fgen._target_column)
         predictions = evaluate(self._model, dataloader, estim_quality=estimate_quality,
-                               threshold=moves_threshold)
-        return aggregate_SP_predictions(predictions, session_threshold)
+                               threshold=moves_threshold, print_metrics=False, binarize=False)
+        return aggregate_SP_predictions(predictions, session_threshold, policy="max")
 
 
 
