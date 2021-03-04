@@ -1,0 +1,14 @@
+,0
+0,timestamps
+1,stim_X
+2,stim_Y
+3,gaze_X
+4,gaze_Y
+5,frame
+6,timestamp
+7,success
+8,session_id
+9,stimulus_type
+10,user_id
+11,x_diff
+12,y_diff
