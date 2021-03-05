@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from pprint import pprint
 from typing import (NoReturn, Union, Dict, Any)
 
@@ -7,7 +8,8 @@ from config import init_config, config
 import create_training_dataset
 from eyemovements.classification import run_eyemovements_classification
 from generate_features import FeatureGenerator
-from verification.dataloaders import (create_training_dataloaders, create_verification_dataloader)
+from verification.dataloaders import (create_training_dataloaders, create_verification_dataloader,
+                                      create_selfverify_dataloader)
 from verification.train_utils import (Trainer, init_model, evaluate, aggregate_SP_predictions)
 
 class VerificationStand:
@@ -105,6 +107,8 @@ class VerificationStand:
 
         owner_data = dataset.get_owner_data()
         others_data = dataset.get_others_data()
+        if estimate_quality:
+            others_data_targets = others_data.groupby(by=['session_id']).agg({'session_target': lambda x: np.unique(x)[0]})
 
         # Make eye movements classification and extract features
         owner_data = run_eyemovements_classification(owner_data, is_train=True, do_estimate_quality=True)
@@ -116,16 +120,43 @@ class VerificationStand:
         print(f"Owner data: {owner_data.shape}")
         print(f"Others data: {others_data.shape}")
 
+        self_threshold = self.__create_threshold(owner_data,
+                                                 moves_threshold=verification_params.get("moves_threshold", 0.5),
+                                                 default_threshold=verification_params.get("session_threshold", 0.5),
+                                                 policy='quantile_0.6')
+
         verification_results = {}
         for id, session in others_data.groupby(by='session_id'):
             session = session.reset_index(drop=True)
             result = self.__evaluate_session(owner_data, session, estimate_quality=estimate_quality,
                                              moves_threshold=verification_params.get("moves_threshold", 0.5),
-                                             session_threshold=verification_params.get("session_threshold", 0.5))
+                                             session_threshold=self_threshold)
             verification_results[id] = result
 
         pprint(verification_results)
         return verification_results
+
+
+    def __create_threshold(self, owner_data: pd.DataFrame,
+                           moves_threshold: float, default_threshold: float,
+                           policy: str='mean'):
+        dataloader = create_selfverify_dataloader(owner_data,
+                                                  feature_columns=self._fgen._feature_columns)
+        predictions = evaluate(self._model, dataloader, estim_quality=True,
+                               threshold=moves_threshold, print_metrics=False,
+                               binarize=False)
+        if policy == 'mean':
+            return np.mean(predictions)
+        elif policy == "max":
+            return np.max(predictions)
+        elif policy.startswith('quantile'):
+            q = float(policy.split("_")[-1])
+            return np.quantile(predictions, q=q)
+        else:
+            print("Specified incorrect predictions aggregation policy, returns default value")
+            return default_threshold
+
+
 
 
     def __evaluate_session(self, owner_data: pd.DataFrame,
@@ -138,7 +169,8 @@ class VerificationStand:
                                                     target_col=self._fgen._target_column)
         predictions = evaluate(self._model, dataloader, estim_quality=estimate_quality,
                                threshold=moves_threshold, print_metrics=False, binarize=False)
-        return aggregate_SP_predictions(predictions, session_threshold, policy="max")
+        return aggregate_SP_predictions(predictions, session_threshold, policy="mean")
+
 
 
 

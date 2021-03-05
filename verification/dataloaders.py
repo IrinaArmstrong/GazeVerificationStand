@@ -218,3 +218,30 @@ def create_verification_dataloader(data_samples_1: pd.DataFrame,
                                             example_1=ex1[feature_columns].values.astype(np.float32),
                                             label=1 if target_col and (ex0[target_col] == ex1[target_col]) else 0))
         return DataLoader(ContrastiveDataset(pairs), batch_size=batch_size, num_workers=0)
+
+
+def create_selfverify_dataloader(data_samples: pd.DataFrame,
+                                 feature_columns: List[str],
+                                 max_samples: int = 200,
+                                 batch_size: int=10) -> DataLoader:
+    """
+    Create dataset and dataloader for run mode of verification.
+    :param data_samples_1: owner data
+    :param data_samples_2: others data (labeled or not)
+    :param feature_columns: feature columns to select from data
+    :param target_col: column of target value (if presented in data)
+    :param max_samples: maximum number of samples to create
+    :return: -
+    """
+    ds_inds = list(data_samples.index)
+    pairs = []
+
+    # Take them all
+    inds_pairs = [pair for pair in list(product(ds_inds, ds_inds)) if pair[0] != pair[1]]
+    for pair in inds_pairs:
+        ex0 = data_samples.iloc[pair[0]]
+        ex1 = data_samples.iloc[pair[1]]
+        pairs.append(ContrastiveExample(example_0=ex0[feature_columns].values.astype(np.float32),
+                                        example_1=ex1[feature_columns].values.astype(np.float32),
+                                        label=1))
+    return DataLoader(ContrastiveDataset(pairs), batch_size=batch_size, num_workers=0)

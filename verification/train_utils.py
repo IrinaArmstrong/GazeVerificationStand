@@ -301,8 +301,10 @@ def aggregate_SP_predictions(predictions: List[float],
              0 - if verification is "failed"
     """
     if policy == "mean":
+        m = np.mean(predictions)
         return 1 if np.mean(predictions) > threshold else 0
     elif policy == "max":
+        m = np.max(predictions)
         return 1 if np.max(predictions) > threshold else 0
     else:
         print("Specify correct predictions aggregation policy and try again.")

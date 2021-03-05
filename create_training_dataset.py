@@ -64,10 +64,11 @@ class User:
         s = f"User #{self._user_id}: {self._user_name}\n"
         s += f"\nUser has {len(self._sessions)} sessions."
         s += f"\nWith {np.unique([sess._stimulus_type for sess in self._sessions])} stimulus types."
+        # s += f"\nSessions"
         return s
 
     def __eq__(self, other: object) -> object:
-        return True if self._user_name == other._user_name else False
+        return True if self._user_name.strip().lower() == other._user_name.strip().lower() else False
 
     def __hash__(self):
         return hash(self._user_name)
@@ -139,8 +140,8 @@ class RunDataset:
         self._selected_columns = pd.read_csv(config.get("DataPaths", "selected_columns"), header = 0,
                                              index_col = 0, squeeze = True).to_list()
         self._owner = self.__create_owner()
-        self._others = self.__create_others()
-        self._others_sessions = self.__create_sessions()
+        self._others, self._users_targets = self.__create_others()
+        self._others_sessions, self._sessions_targets = self.__create_sessions()
 
 
     def __create_owner(self):
@@ -154,7 +155,7 @@ class RunDataset:
         mdf['name'] = mdf['name'].str.strip()
         mdf['filename'] = meta_file[0]
         mdf['user_id'] = 1
-        return User(user_id=1, user_name=mdf['name'], sessions_fns=mdf['filename'])
+        return User(user_id=1, user_name=mdf['name'].values[0], sessions_fns=mdf['filename'].to_list())
 
 
     def __create_others(self):
@@ -172,20 +173,30 @@ class RunDataset:
                 meta_df.append(mdf)
             meta_df = pd.concat(meta_df).groupby(by='name').agg({'filename': lambda x: list(x)}).reset_index()
             meta_df['user_id'] = np.arange(0, len(meta_df))
-            return [User(user_id=row['user_id'], user_name=row['name'], sessions_fns=row['filename'])
+            users = [User(user_id=row['user_id'], user_name=row['name'], sessions_fns=row['filename'])
                      for i, row in meta_df[['user_id', 'name', 'filename']].iterrows()]
+            users_targets = [1 if user == self._owner else 0 for user in users]
+            return users, users_targets
         # Otherwise all ids are 0 and user is "Unknown"
         else:
             data_files = glob.glob(self._others_path + "\\*.csv")
-            return User(user_id=0, user_name="Unknown", sessions_fns=data_files)
+            users = [User(user_id=0, user_name="Unknown", sessions_fns=data_files)]
+            users_targets = [0]
+            return users, users_targets
 
 
     def __create_sessions(self):
         if self._estimate_quality:
-            return [user.get_session(sess_num) for user in self._others
-                    for sess_num in range(user.get_num_sessions())]
+            sessions = []
+            sessions_targets = []
+            for user, target in zip(self._others, self._users_targets):
+                for sess_num in range(user.get_num_sessions()):
+                    sessions.append(user.get_session(sess_num))
+                    sessions_targets.append(target)
+            return [sessions, sessions_targets]
         else:
-            self._others.get_session(0)
+            return [[self._others[0].get_session(sess_num) for sess_num in range(self._others[0].get_num_sessions())],
+                    [0] * self._others[0].get_num_sessions()]
 
 
     def get_owner_data(self) -> pd.DataFrame:
@@ -193,11 +204,14 @@ class RunDataset:
 
     def get_others_data(self) -> pd.DataFrame:
         sess_df = []
-        for i, sess in tqdm(enumerate(self._others_sessions),
+        for i, (sess, sess_targ) in tqdm(enumerate(zip(self._others_sessions, self._sessions_targets)),
                          total=len(self._others_sessions)):
             sess_part_df = sess.get_gaze_data()
             sess_part_df['session_id'] = i
+            sess_part_df['session_target'] = sess_targ
             sess_df.append(sess_part_df)
+        if self._estimate_quality:
+            self._selected_columns += ['session_target']
         sess_df = pd.concat(sess_df, axis=0)[self._selected_columns]
         return sess_df
 
