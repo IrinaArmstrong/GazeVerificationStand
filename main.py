@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from pprint import pprint
-from typing import (NoReturn, Union, Dict, Any)
+from typing import (NoReturn, Union, Dict, Any, Tuple, List)
 
 from helpers import read_json
 from config import init_config, config
@@ -108,7 +108,9 @@ class VerificationStand:
         owner_data = dataset.get_owner_data()
         others_data = dataset.get_others_data()
         if estimate_quality:
-            others_data_targets = others_data.groupby(by=['session_id']).agg({'session_target': lambda x: np.unique(x)[0]})
+            others_data_targets = others_data.groupby(by=['session_id']).agg({'session_target':
+                                                                                  lambda x: np.unique(x)[0]}) #.reset_index()
+            others_data_targets = others_data_targets.to_dict('records')
 
         # Make eye movements classification and extract features
         owner_data = run_eyemovements_classification(owner_data, is_train=True, do_estimate_quality=True)
@@ -123,19 +125,33 @@ class VerificationStand:
         self_threshold = self.__create_threshold(owner_data,
                                                  moves_threshold=verification_params.get("moves_threshold", 0.5),
                                                  default_threshold=verification_params.get("session_threshold", 0.5),
-                                                 policy='quantile_0.6')
+                                                 policy='mean')
 
         verification_results = {}
         for id, session in others_data.groupby(by='session_id'):
             session = session.reset_index(drop=True)
-            result = self.__evaluate_session(owner_data, session, estimate_quality=estimate_quality,
+            (result, proba) = self.__evaluate_session(owner_data, session, estimate_quality=estimate_quality,
                                              moves_threshold=verification_params.get("moves_threshold", 0.5),
                                              session_threshold=self_threshold)
-            verification_results[id] = result
+            verification_results[id] = (result, proba)
+        if estimate_quality:
+            self.__print_results(self_threshold, verification_results, others_data_targets)
+        else:
+            self.__print_results(self_threshold, verification_results)
 
-        pprint(verification_results)
         return verification_results
 
+    def __print_results(self, self_threshold: float,
+                        results: Dict[int, Tuple[int, float]], true_targets: List[Dict[str, int]]=[]):
+        print(f"With defined self verification threshold: {self_threshold}")
+        print(f"Results are:")
+        if len(true_targets):
+            for idx, (prediction, probability) in results.items():
+                print(f"{idx}: {prediction} predicted with proba {probability}, "
+                      f"true is: {true_targets[idx].get('session_target', None)}")
+        else:
+            for idx, (prediction, probability) in results.items():
+                print(f"{idx}: {prediction} predicted with proba {probability}")
 
     def __create_threshold(self, owner_data: pd.DataFrame,
                            moves_threshold: float, default_threshold: float,
@@ -157,13 +173,11 @@ class VerificationStand:
             return default_threshold
 
 
-
-
     def __evaluate_session(self, owner_data: pd.DataFrame,
                            others_data: pd.DataFrame,
                            estimate_quality: bool,
                            moves_threshold: float,
-                           session_threshold: float) -> int:
+                           session_threshold: float) -> Tuple[int, float]:
         dataloader = create_verification_dataloader(owner_data, others_data,
                                                     feature_columns=self._fgen._feature_columns,
                                                     target_col=self._fgen._target_column)

@@ -8,7 +8,7 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import (List, NoReturn)
+from typing import (List, NoReturn, Tuple)
 from sklearn.metrics import (balanced_accuracy_score, accuracy_score,
                              classification_report, confusion_matrix)
 import matplotlib.pyplot as plt
@@ -291,7 +291,7 @@ def init_model(dir: str='models_checkpoints',
 
 
 def aggregate_SP_predictions(predictions: List[float],
-                             threshold: float, policy: str='mean') -> int:
+                             threshold: float, policy: str='mean') -> Tuple[int, float]:
     """
     Aggregate predictions for full session
     from list of predictions for each SP movement.
@@ -302,13 +302,13 @@ def aggregate_SP_predictions(predictions: List[float],
     """
     if policy == "mean":
         m = np.mean(predictions)
-        return 1 if np.mean(predictions) > threshold else 0
+        return (1, m) if m > threshold else (0, m)
     elif policy == "max":
         m = np.max(predictions)
-        return 1 if np.max(predictions) > threshold else 0
+        return (1, m) if m > threshold else (0, m)
     else:
         print("Specify correct predictions aggregation policy and try again.")
-        return 0
+        return (0, 0.0)
 
 
 
