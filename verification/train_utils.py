@@ -306,6 +306,10 @@ def aggregate_SP_predictions(predictions: List[float],
     elif policy == "max":
         m = np.max(predictions)
         return (1, m) if m > threshold else (0, m)
+    elif policy.startswith('quantile'):
+        q = float(policy.split("_")[-1])
+        m = np.quantile(predictions, q=q)
+        return (1, m) if m > threshold else (0, m)
     else:
         print("Specify correct predictions aggregation policy and try again.")
         return (0, 0.0)

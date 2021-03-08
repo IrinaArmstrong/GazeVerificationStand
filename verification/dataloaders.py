@@ -199,7 +199,7 @@ def create_verification_dataloader(data_samples_1: pd.DataFrame,
 
     if len(ds1_inds) * len(ds2_inds) > max_samples:
         # Take only max_samples pairs
-        for i, pair in enumerate(product([ds1_inds, ds2_inds])):
+        for i, pair in enumerate(product(ds1_inds, ds2_inds)):
             if i < max_samples:
                 ex0 = data_samples_1.iloc[pair[0]]
                 ex1 = data_samples_2.iloc[pair[1]]

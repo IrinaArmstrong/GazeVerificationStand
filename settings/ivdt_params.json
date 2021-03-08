@@ -1,1 +1,1 @@
-{"saccade_min_velocity": 4, "dispersion_threshold": 5, "window_size": 10, "min_saccade_duration_threshold": 0.0002, "max_saccade_duration_threshold": 0.001, "min_fixation_duration_threshold": 0.001, "min_sp_duration_threshold": 0.002}
+{"saccade_min_velocity": 5, "dispersion_threshold": 5, "window_size": 10, "min_saccade_duration_threshold": 0.0002, "max_saccade_duration_threshold": 0.001, "min_fixation_duration_threshold": 0.001, "min_sp_duration_threshold": 0.002}

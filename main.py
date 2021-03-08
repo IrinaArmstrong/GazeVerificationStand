@@ -123,16 +123,17 @@ class VerificationStand:
         print(f"Others data: {others_data.shape}")
 
         self_threshold = self.__create_threshold(owner_data,
-                                                 moves_threshold=verification_params.get("moves_threshold", 0.5),
+                                                 moves_threshold=verification_params.get("moves_threshold", 0.6),
                                                  default_threshold=verification_params.get("session_threshold", 0.5),
-                                                 policy='mean')
+                                                 policy=verification_params.get("policy"))
 
         verification_results = {}
         for id, session in others_data.groupby(by='session_id'):
             session = session.reset_index(drop=True)
             (result, proba) = self.__evaluate_session(owner_data, session, estimate_quality=estimate_quality,
-                                             moves_threshold=verification_params.get("moves_threshold", 0.5),
-                                             session_threshold=self_threshold)
+                                                      moves_threshold=verification_params.get("moves_threshold", 0.6),
+                                                      session_threshold=self_threshold,
+                                                      policy=verification_params.get("policy"))
             verification_results[id] = (result, proba)
         if estimate_quality:
             self.__print_results(self_threshold, verification_results, others_data_targets)
@@ -175,15 +176,14 @@ class VerificationStand:
 
     def __evaluate_session(self, owner_data: pd.DataFrame,
                            others_data: pd.DataFrame,
-                           estimate_quality: bool,
-                           moves_threshold: float,
-                           session_threshold: float) -> Tuple[int, float]:
+                           estimate_quality: bool, moves_threshold: float,
+                           session_threshold: float, policy: str='mean') -> Tuple[int, float]:
         dataloader = create_verification_dataloader(owner_data, others_data,
                                                     feature_columns=self._fgen._feature_columns,
                                                     target_col=self._fgen._target_column)
         predictions = evaluate(self._model, dataloader, estim_quality=estimate_quality,
                                threshold=moves_threshold, print_metrics=False, binarize=False)
-        return aggregate_SP_predictions(predictions, session_threshold, policy="mean")
+        return aggregate_SP_predictions(predictions, session_threshold, policy=policy)
 
 
 
