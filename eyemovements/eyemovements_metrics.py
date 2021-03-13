@@ -1,5 +1,8 @@
 # Basic
+import os
 import sys
+sys.path.insert(0, "..")
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -10,7 +13,10 @@ from scipy.spatial.distance import euclidean
 # For
 import plotly
 import plotly.express as px
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 
+from helpers import read_json
 from eyemovements.eyemovements_utils import (get_movement_indexes, GazeState,
                                  get_amplitude_and_angle, get_path_and_centroid)
 
@@ -42,10 +48,55 @@ def estimate_quality(data: List[pd.DataFrame]):
     return metrics
 
 def visualize_and_save(data: pd.DataFrame, fn: str,
-                       x: str="time", y: str="x",
+                       x_col: str="x", y_col: str="y",
+                       time_col: str='timestamps',
                        color: str="movement_name"):
-    assert (x in data.columns) and (y in data.columns) and (color in data.columns)
-    fig = px.scatter(data, color=color, y=y, x=x)
+    assert ((x_col in data.columns) and (y_col in data.columns)
+            and (color in data.columns) and (time_col in data.columns))
+
+    color_mapping = dict(read_json(os.path.join(sys.path[0], "settings", "color_mappings.json")))
+    data['color'] = data[color].apply(lambda x: color_mapping.get(x, "black"))
+
+    fig = make_subplots(
+        rows=2, cols=2,
+        shared_xaxes=False,
+        vertical_spacing=0.06,
+        specs=[[{}, {}],
+               [{"colspan": 2}, None]],
+        row_heights=[0.4, 0.6],
+        subplot_titles=("Gaze X Axis", "Gaze Y Axis", "Gaze X-Y Axis")
+    )
+
+    min_ts = np.min(data[time_col])
+    for movement_type, df in data.groupby(by=color):
+        fig.add_trace(go.Scatter(x=df[time_col] - min_ts,
+                                 y=df[x_col],
+                                 mode='markers',
+                                 marker_color=df['color'],
+                                 name=movement_type,
+                                 showlegend=False), row=1, col=1)
+
+        fig.add_trace(go.Scatter(x=df[time_col] - min_ts,
+                                 y=df[y_col],
+                                 mode='markers',
+                                 marker_color=df['color'],
+                                 name=movement_type,
+                                 showlegend=False), row=1, col=2)
+
+        fig.add_trace(go.Scatter(x=df[x_col],
+                                 y=df[y_col],
+                                 mode='markers',
+                                 marker_color=df['color'],
+                                 name=movement_type), row=2, col=1)
+
+    fig.update_traces(mode='markers', marker_line_width=0.1, marker_size=4)
+    fig.update_layout(height=800, width=1000,
+                      title_text="Eyemovements classified")
+
+    fig.update_layout(legend_title_text='Eyemovements Types',
+                      legend=dict(font=dict(family="Arial", size=12)))
+    fig.update_layout(showlegend=True)
+    # fig = px.scatter(data, color=color, y=y, x=x)
     plotly.offline.plot(fig, filename='../output/'+ fn + '.html')
 
 

@@ -144,4 +144,6 @@ pip-selfcheck.json
 
 # Data
 ./data/*
-
+*.csv
+*.html
+*.txt

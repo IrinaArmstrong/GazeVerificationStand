@@ -18,7 +18,6 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-
 def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
     """
     Select from given data only SP moves and forms dataset.
@@ -39,15 +38,11 @@ def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
     return sps
 
 
-def run_eyemovements_classification(data: pd.DataFrame, is_train: bool,
-                                    do_estimate_quality: bool) -> pd.DataFrame:
+def classify_eyemovements_wrapper(data: pd.DataFrame) -> pd.DataFrame:
     """
-    Make eye movements classification in training or running mode.
+    Make eye movements classification.
     :param data: dataframe with gaze data
-    :param is_train: whether is training mode (user_id is known) ot running (unknown)
-    :param do_estimate_quality: whether to print evaluation metrics of classification
-    :param filtering_kwargs: parameters for Savitsky-Golay filter
-    :return: dataframe with SP moves only.
+    :return: dataframe with added column with classified movements.
     """
     data = groupby_session(data)
     data = sgolay_filter_dataset(data, **dict(read_json(config.get("EyemovementClassification",
@@ -66,9 +61,23 @@ def run_eyemovements_classification(data: pd.DataFrame, is_train: bool,
                        'min_fixation_duration_threshold': model_params.get('min_fixation_duration_threshold'),
                        'min_sp_duration_threshold': model_params.get('min_sp_duration_threshold')}
 
-    data = classify_eyemovements_dataset(ivdt, data, gaze_col=['filtered_X', 'filtered_Y'],
+    return classify_eyemovements_dataset(ivdt, data, gaze_col=['filtered_X', 'filtered_Y'],
                                          time_col='timestamps', velocity_col='velocity_sqrt',
                                          duration_thresholds=thresholds_dict)
+
+
+def run_eyemovements_classification(data: pd.DataFrame, is_train: bool,
+                                    do_estimate_quality: bool) -> pd.DataFrame:
+    """
+    Make eye movements classification in training or running mode.
+    :param data: dataframe with gaze data
+    :param is_train: whether is training mode (user_id is known) ot running (unknown)
+    :param do_estimate_quality: whether to print evaluation metrics of classification
+    :param filtering_kwargs: parameters for Savitsky-Golay filter
+    :return: dataframe with SP moves only.
+    """
+    data = classify_eyemovements_wrapper(data)
+
     if do_estimate_quality:
         metrics = estimate_quality(data)
         print("Eye movements classification metrics:")

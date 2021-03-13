@@ -168,7 +168,7 @@ class VerificationStand:
             return np.max(predictions)
         elif policy.startswith('quantile'):
             q = float(policy.split("_")[-1])
-            return np.quantile(predictions, q=q)
+            return np.quantile(predictions, q=q, interpolation='higher')
         else:
             print("Specified incorrect predictions aggregation policy, returns default value")
             return default_threshold

@@ -22,7 +22,7 @@ class TestEyemovementsModule(unittest.TestCase):
     def __init__(self, method_name="runTest"):
         super().__init__(method_name)
         init_config("../set_locations.ini")
-        self.train_dataset = TrainDataset(config.get("DataPaths", "owner_data"), ).create_dataset()
+        self.train_dataset = TrainDataset(config.get("DataPaths", "run_data"), ).create_dataset()
         self.sessions = groupby_session(self.train_dataset)
         self.filtered_sessions = sgolay_filter_dataset(self.sessions,
                                                        **dict(read_json(config.get("EyemovementClassification",
@@ -60,9 +60,8 @@ class TestEyemovementsModule(unittest.TestCase):
         self.filtered_sessions[sess_num]["movements"] = movements
         self.filtered_sessions[sess_num]["movements_type"] = [GazeState.decode(x) for x in self.filtered_sessions[sess_num]["movements"]]
         print("Statistics of dispersion:\n", pd.Series(stats).describe())
-        visualize_and_save(self.filtered_sessions[sess_num], fn="eyemovements_x_axis", y="gaze_X", x="timestamps", color="movements_type")
-        visualize_and_save(self.filtered_sessions[sess_num], fn="eyemovements_y_axis", y="gaze_Y", x="timestamps", color="movements_type")
-        visualize_and_save(self.filtered_sessions[sess_num], fn="eyemovements_xy_pattern", y="gaze_Y", x="gaze_X", color="movements_type")
+        visualize_and_save(self.filtered_sessions[sess_num], fn="eyemovements",
+                           y_col="gaze_Y", x_col='gaze_X', time_col="timestamps", color="movements_type")
         metrics = estimate_quality([self.filtered_sessions[sess_num]])
         print("Eye movements classification metrics:")
         pprint(metrics)

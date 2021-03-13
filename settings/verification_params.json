@@ -1,3 +1,3 @@
 {
-  "moves_threshold": 0.5, "session_threshold": 0.24, "estimate_quality": 1, "policy": "quantile_0.7"
+  "moves_threshold": 0.55, "session_threshold": 0.3, "estimate_quality": 1, "policy": "quantile_0.7"
 }
