@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 from pprint import pprint
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import roc_curve
 from typing import (NoReturn, Union, Dict, Any, Tuple, List)
 
 from helpers import read_json
@@ -11,6 +13,7 @@ from generate_features import FeatureGenerator
 from verification.dataloaders import (create_training_dataloaders, create_verification_dataloader,
                                       create_selfverify_dataloader)
 from verification.train_utils import (Trainer, init_model, evaluate, aggregate_SP_predictions)
+from visualization import visualize_quality
 
 class VerificationStand:
 
@@ -109,7 +112,9 @@ class VerificationStand:
         others_data = dataset.get_others_data()
         if estimate_quality:
             others_data_targets = others_data.groupby(by=['session_id']).agg({'session_target':
-                                                                                  lambda x: np.unique(x)[0]}) #.reset_index()
+                                                                                  lambda x: np.unique(x)[0],
+                                                                              "filename":
+                                                                                  lambda x: np.unique(x)[0]})
             others_data_targets = others_data_targets.to_dict('records')
 
         # Make eye movements classification and extract features
@@ -137,6 +142,7 @@ class VerificationStand:
             verification_results[id] = (result, proba)
         if estimate_quality:
             self.__print_results(self_threshold, verification_results, others_data_targets)
+            self.__estimate_quality(verification_results, others_data_targets)
         else:
             self.__print_results(self_threshold, verification_results)
 
@@ -148,11 +154,26 @@ class VerificationStand:
         print(f"Results are:")
         if len(true_targets):
             for idx, (prediction, probability) in results.items():
+                fn = true_targets[idx].get('filename', '').split("\\")[-1]
+                print(f"\nSession: {fn}")
                 print(f"{idx}: {prediction} predicted with proba {probability}, "
                       f"true is: {true_targets[idx].get('session_target', None)}")
         else:
             for idx, (prediction, probability) in results.items():
                 print(f"{idx}: {prediction} predicted with proba {probability}")
+
+
+    def __estimate_quality(self, results: Dict[int, Tuple[int, float]],
+                           true_targets: List[Dict[str, int]] = []):
+        y_true = []
+        y_pred = []
+        y_pred_probas = []
+        for idx, (prediction, probability) in results.items():
+            y_true.append(true_targets[idx].get('session_target', None))
+            y_pred.append(prediction)
+            y_pred_probas.append(probability)
+        visualize_quality(y_true, y_pred, y_pred_probas)
+
 
     def __create_threshold(self, owner_data: pd.DataFrame,
                            moves_threshold: float, default_threshold: float,

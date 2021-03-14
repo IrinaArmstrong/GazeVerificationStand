@@ -34,6 +34,7 @@ class Session:
         gaze_df['user_id'] = self._user_id
         gaze_df["x_diff"] = gaze_df["stim_X"] - gaze_df["gaze_X"]
         gaze_df["y_diff"] = gaze_df["stim_Y"] - gaze_df["gaze_Y"]
+        gaze_df['filename'] = self._dataset_fn
         return gaze_df
 
 

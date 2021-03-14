@@ -11,7 +11,8 @@ from create_training_dataset import TrainDataset
 from eyemovements.filtering import sgolay_filter_dataset
 from data_utilities import groupby_session, horizontal_align_data
 from eyemovements.classification import (get_sp_moves_dataset, IVDT, GazeState)
-from eyemovements.eyemovements_metrics import visualize_and_save, estimate_quality
+from eyemovements.eyemovements_metrics import estimate_quality
+from visualization import visualize_eyemovements
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -60,8 +61,8 @@ class TestEyemovementsModule(unittest.TestCase):
         self.filtered_sessions[sess_num]["movements"] = movements
         self.filtered_sessions[sess_num]["movements_type"] = [GazeState.decode(x) for x in self.filtered_sessions[sess_num]["movements"]]
         print("Statistics of dispersion:\n", pd.Series(stats).describe())
-        visualize_and_save(self.filtered_sessions[sess_num], fn="eyemovements",
-                           y_col="gaze_Y", x_col='gaze_X', time_col="timestamps", color="movements_type")
+        visualize_eyemovements(self.filtered_sessions[sess_num], fn="eyemovements",
+                               y_col="gaze_Y", x_col='gaze_X', time_col="timestamps", color="movements_type")
         metrics = estimate_quality([self.filtered_sessions[sess_num]])
         print("Eye movements classification metrics:")
         pprint(metrics)
