@@ -1,6 +1,7 @@
 # Basic
 import os
 import sys
+sys.path.insert(0, "..")
 
 import umap
 import numpy as np
@@ -70,7 +71,7 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
 
-    plotly.offline.plot(fig, filename='./output/'+ fn + '.html')
+    plotly.offline.plot(fig, filename='../output/'+ fn + '.html')
 
 
 def visualize_quality(y_true, y_pred, y_pred_probas):
@@ -103,7 +104,7 @@ def _plot_roc_curve(y_true, y_pred_probas):
             b=100,
             t=100,
             pad=4))
-    plotly.offline.plot(fig, filename='./output/roc_curve.html')
+    plotly.offline.plot(fig, filename='../output/roc_curve.html')
 
 
 def _plot_confusion_matrix(y_true, y_pred):
@@ -152,7 +153,7 @@ def _plot_confusion_matrix(y_true, y_pred):
             b=100,
             t=100,
             pad=4))
-    plotly.offline.plot(fig, filename='./output/confusion_matrix.html')
+    plotly.offline.plot(fig, filename='../output/confusion_matrix.html')
 
 
 def reduce_dim_embeddings_UMAP(embeddings: np.ndarray,
@@ -174,4 +175,4 @@ def plot_embeddings_2D(embeddings: np.ndarray, targets: np.ndarray):
     fig.update_layout(legend_title_text='Принадлежность движений',
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
-    plotly.offline.plot(fig, filename='./output/embeddings.html')
+    plotly.offline.plot(fig, filename='../output/embeddings.html')
