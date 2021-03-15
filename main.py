@@ -1,8 +1,5 @@
 import pandas as pd
 import numpy as np
-from pprint import pprint
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import roc_curve
 from typing import (NoReturn, Union, Dict, Any, Tuple, List)
 
 from helpers import read_json

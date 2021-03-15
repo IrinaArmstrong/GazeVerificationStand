@@ -2,6 +2,7 @@
 import os
 import sys
 
+import umap
 import numpy as np
 import pandas as pd
 
@@ -26,6 +27,8 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
 
     color_mapping = dict(read_json(os.path.join(sys.path[0], "settings", "color_mappings.json")))
     data['color'] = data[color].apply(lambda x: color_mapping.get(x, "black"))
+    names_mapping = dict(read_json(os.path.join(sys.path[0], "settings", "eng_rus_names.json")))
+    data['rus_movements'] = data[color].apply(lambda x: names_mapping.get(x, "black"))
 
     fig = make_subplots(
         rows=2, cols=2,
@@ -34,11 +37,11 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
         specs=[[{}, {}],
                [{"colspan": 2}, None]],
         row_heights=[0.4, 0.6],
-        subplot_titles=("Gaze X Axis", "Gaze Y Axis", "Gaze X-Y Axis")
+        subplot_titles=("Взгляд, координата Х", "Взгляд, координата Y", "Взгляд, координаты X-Y")
     )
 
     min_ts = np.min(data[time_col])
-    for movement_type, df in data.groupby(by=color):
+    for movement_type, df in data.groupby(by='rus_movements'):
         fig.add_trace(go.Scatter(x=df[time_col] - min_ts,
                                  y=df[x_col],
                                  mode='markers',
@@ -61,9 +64,9 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
 
     fig.update_traces(mode='markers', marker_line_width=0.1, marker_size=4)
     fig.update_layout(height=800, width=1000,
-                      title_text="Eyemovements classified")
+                      title_text="Классификация движений глаз")
 
-    fig.update_layout(legend_title_text='Eyemovements Types',
+    fig.update_layout(legend_title_text='Типы движений глаз',
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
 
@@ -150,3 +153,25 @@ def _plot_confusion_matrix(y_true, y_pred):
             t=100,
             pad=4))
     plotly.offline.plot(fig, filename='./output/confusion_matrix.html')
+
+
+def reduce_dim_embeddings_UMAP(embeddings: np.ndarray,
+                               n_neighbors: int=15, dim=2):
+    umap_model = umap.UMAP(n_neighbors=n_neighbors,
+                           min_dist=0., n_components=dim)
+    return umap_model.fit_transform(embeddings)
+
+
+def plot_embeddings_2D(embeddings: np.ndarray, targets: np.ndarray):
+    name_mapping = {"1": "Движения верифицируемого", "0": "Движения иных людей"}
+
+    fig = px.scatter(x=embeddings[:, 0], y=embeddings[:, 1],
+                     color=list(map(lambda x: name_mapping.get(x), targets)))
+    fig.update_traces(mode='markers', marker_line_width=0.1, marker_size=7)
+    fig.update_layout(height=600, width=1000,
+                      title_text="Верификация по следящим движениям глаз")
+
+    fig.update_layout(legend_title_text='Принадлежность движений',
+                      legend=dict(font=dict(family="Arial", size=12)))
+    fig.update_layout(showlegend=True)
+    plotly.offline.plot(fig, filename='./output/embeddings.html')

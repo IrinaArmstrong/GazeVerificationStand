@@ -84,7 +84,8 @@ class FeatureGenerator:
 
         self._feature_columns = [col for col in data.columns if
                             col not in ['sp_guid', 'user_id', 'stimulus_type',
-                                           'session_id', 'sp_id', 'splitted_sp_id', 'index']]
+                                           'session_id', 'sp_id', 'splitted_sp_id', 'index',
+                                        ]]
         self._target_column = 'user_id'
 
         if rescale:

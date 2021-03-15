@@ -9,7 +9,7 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 
 import torch
-from torch.utils.data import (DataLoader, Dataset)
+from torch.utils.data import (DataLoader, Dataset, TensorDataset)
 
 
 #---------------------------- PREPROCESSING UTILITIES ----------------------------
@@ -158,20 +158,21 @@ def create_training_dataloaders(data: pd.DataFrame, batch_size: int,
         return datasets
 
 
-def create_dataloader(data: pd.DataFrame, batch_size: int,
-                      features_cols: List[str], target_col: str):
+def create_embeddings_dataloader(data: pd.DataFrame,
+                                 batch_size: int,
+                                 features_cols: List[str],
+                                 target_col: str):
     """
-    TODO: Добавить разделение данных владельца и тестовых, организовать сравнение - ???
     Creates single dataloader for Pytorch model running.
     :param data: dataframe with generated features
     :param batch_size: size of single batch
     :return: dataloader
     """
-    dataloader = create_contrastive_dataset(wrap_dataset(data[features_cols].values,
-                                                         data[target_col].astype(int).values.reshape(-1)),
-                                            batch_size=batch_size)
+    dataset = TensorDataset(torch.from_numpy(data[features_cols].values.astype(np.float32)).float(),
+                            torch.from_numpy(data[target_col].values).float())
+    dataloader = DataLoader(dataset, batch_size, num_workers=0)
+
     print(f"Dataset length: {len(dataloader.dataset)}")
-    print(f"Classes balance:\n", pd.Series([ex.label for ex in dataloader.dataset.examples]).value_counts())
     return dataloader
 
 

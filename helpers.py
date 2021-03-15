@@ -3,12 +3,12 @@ from typing import (List, Dict, Any, NoReturn)
 
 
 def read_json(path: str) -> List[Dict[str, Any]]:
-    with open(path, "r") as f:
+    with open(path, "r", encoding='utf-8') as f:
         data = json.load(f)
     return data
 
 def write_json(path: str, data: Dict[str, Any]) -> NoReturn:
-    with open(path, "w") as f:
+    with open(path, "w", encoding='utf-8') as f:
         json.dump(data, f)
 
 

@@ -8,7 +8,7 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import (List, NoReturn, Tuple)
+from typing import (List, NoReturn, Tuple, Union)
 from sklearn.metrics import (balanced_accuracy_score, accuracy_score,
                              classification_report, confusion_matrix)
 import matplotlib.pyplot as plt
@@ -314,7 +314,50 @@ def aggregate_SP_predictions(predictions: List[float],
         print("Specify correct predictions aggregation policy and try again.")
         return (0, 0.0)
 
+def create_embeddings(model: torch.nn.Module, dataloader,
+                      estim_quality: bool) -> Union[List[np.ndarray], Tuple[List[np.ndarray], List[int]]]:
+    """
+    Making predictions with model.
+    :param model: model instance to run;
+    :param dataloader: DataLoader instance;
+    :param estim_quality: to estimate quality of predictions;
+    :return: predictions for given dataset.
+    """
+    seed_everything(11)
+    eval_start = time.time()
+    model.eval()
+    # To store predictions and true labels
+    embeddings = []
+    if estim_quality:
+        true_labels = []
 
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(dataloader):
+            if estim_quality:
+                data = batch[0]
+                target = batch[-1]
+            else:
+                data = batch
+                target = None
+
+            embedding = model.forward_one(data)
+            embedding = embedding.detach().numpy()
+
+            # Store labels
+            if estim_quality:
+                true_labels.extend(target.numpy().astype(int).tolist())
+
+            # Store predictions
+            embeddings.append(embedding)
+
+    # Measure how long the validation run took.
+    validation_time = format_time(time.time() - eval_start)
+
+    print("\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
+    if estim_quality:
+        return (embeddings, true_labels)
+    else:
+        return embeddings
 
 #---------------------------- UTILITIES ----------------------------
 
