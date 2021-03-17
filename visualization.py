@@ -83,7 +83,7 @@ def _plot_roc_curve(y_true, y_pred_probas):
     fpr, tpr, thresholds = roc_curve(y_true, y_pred_probas)
     fig = px.area(
         x=fpr, y=tpr,
-        title=f'ROC Curve (AUC={auc(fpr, tpr):.4f})',
+        title=f'ROC Кривая (AUC={auc(fpr, tpr):.4f})',
         labels=dict(x='False Positive Rate', y='True Positive Rate'),
         width=700, height=500
     )
@@ -104,14 +104,14 @@ def _plot_roc_curve(y_true, y_pred_probas):
             b=100,
             t=100,
             pad=4))
-    plotly.offline.plot(fig, filename='../output/roc_curve.html')
+    plotly.offline.plot(fig, filename='./output/roc_curve.html')
 
 
 def _plot_confusion_matrix(y_true, y_pred):
     cc = confusion_matrix(y_true, y_pred)
     cc = cc[::-1]
 
-    x = ['IMPOSTORS', 'GENUINE USERS']
+    x = ['Другие', 'Верифицируемый']
     y = x[::-1].copy()  # invert idx values of x
 
     # change each element of z to type string for annotations
@@ -121,20 +121,20 @@ def _plot_confusion_matrix(y_true, y_pred):
     fig = ff.create_annotated_heatmap(cc, x=x, y=y, annotation_text=z_text, colorscale='Viridis')
 
     # add title
-    fig.update_layout(title_text='<i><b>Confusion matrix</b></i>')
+    fig.update_layout(title_text='<i><b>Матрица ошибок</b></i>')
 
     # add custom xaxis title
     fig.add_annotation(dict(font=dict(color="black", size=14),
                             x=0.5, y=-0.15,
                             showarrow=False,
-                            text="Predicted value",
+                            text="Предсказания",
                             xref="paper", yref="paper"))
 
     # add custom yaxis title
     fig.add_annotation(dict(font=dict(color="black", size=14),
                             x=-0.2, y=0.5,
                             showarrow=False,
-                            text="Real value",
+                            text="Истинные",
                             textangle=-90,
                             xref="paper", yref="paper"))
 
@@ -153,7 +153,7 @@ def _plot_confusion_matrix(y_true, y_pred):
             b=100,
             t=100,
             pad=4))
-    plotly.offline.plot(fig, filename='../output/confusion_matrix.html')
+    plotly.offline.plot(fig, filename='./output/confusion_matrix.html')
 
 
 def reduce_dim_embeddings_UMAP(embeddings: np.ndarray,
@@ -175,4 +175,4 @@ def plot_embeddings_2D(embeddings: np.ndarray, targets: np.ndarray):
     fig.update_layout(legend_title_text='Принадлежность движений',
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
-    plotly.offline.plot(fig, filename='../output/embeddings.html')
+    plotly.offline.plot(fig, filename='./output/embeddings.html')
