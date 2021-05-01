@@ -221,9 +221,14 @@ class RunDataset:
 
 
 if __name__ == "__main__":
-    dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export3"
+
+    config_path = ".\\set_locations.ini"
+    dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export_full\\Export_full"
+    # dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export3"
+    init_config(config_path)
     dataset = TrainDataset(dataset_path)
-    for user in dataset._users:
-        print(user)
-    gaze_data = dataset.create_dataset()
+    print(f"Unique users: {len(dataset._users)} with sessions: {len(dataset._sessions)}")
+    # for user in dataset._users:
+    #     print(user)
+    # gaze_data = dataset.create_dataset()
     # gaze_data.to_csv(os.path.join(dataset_path + "_results", "all_data.csv"), sep=';', encoding='utf-8')
