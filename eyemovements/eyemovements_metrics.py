@@ -14,14 +14,14 @@ from eyemovements.eyemovements_utils import (get_movement_indexes, GazeState,
                                  get_amplitude_and_angle, get_path_and_centroid)
 
 
-def estimate_quality(data: List[pd.DataFrame]):
-    movements = [df.movements.values for df in data]
-    gaze_data = [df[['gaze_X', 'gaze_Y']].values for df in data]
-    velocity = [df['velocity_sqrt'].values for df in data]
+def estimate_quality(df: pd.DataFrame):
+    movements = df.movements.values
+    gaze_data = df[['gaze_X', 'gaze_Y']].values
+    velocity = df['velocity_sqrt'].values
     # All stimulus movements - are smooth persuites
-    stimulus_movements = [np.full_like(df.movements.values, 3) for df in data]
-    stimulus_data = [df[['stim_X', 'stim_Y']].values for df in data]
-    stimulus_velocity = [df[['stimulus_velocity']].values for df in data]
+    stimulus_movements = np.full_like(df.movements.values, 3)
+    stimulus_data = df[['stim_X', 'stim_Y']].values
+    stimulus_velocity = df[['stimulus_velocity']].values
 
     metrics = {
         # Saccades

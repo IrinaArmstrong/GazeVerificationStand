@@ -17,7 +17,8 @@ class Session:
         self._user_id = user_id
 
         self._dataset_fn = "_".join(self._session_path.split("_")[:-1]) + ".csv"
-        self._stimulus_type = "_".join(self._session_path.split(".")[0].split("_")[-2:])
+        self._stimulus_type = "_".join(self._session_path.split("\\")[-1].replace("__", "_").split("_")[-11:-9])
+        #"_".join(self._session_path.split(".")[0].split("_")[-2:])
 
 
     def get_gaze_data(self) -> pd.DataFrame:
@@ -64,7 +65,7 @@ class User:
     def __str__(self):
         s = f"User #{self._user_id}: {self._user_name}\n"
         s += f"\nUser has {len(self._sessions)} sessions."
-        s += f"\nWith {np.unique([sess._stimulus_type for sess in self._sessions])} stimulus types."
+        # s += f"\nWith {np.unique([sess._stimulus_type for sess in self._sessions])} stimulus types."
         # s += f"\nSessions"
         return s
 
@@ -98,16 +99,23 @@ class TrainDataset:
         meta_files = glob.glob(self._path + "\\*metadata.txt")
         meta_df = []
         for mfn in meta_files:
-            mdf = pd.read_csv(mfn, delimiter=";", encoding="Windows-1251",
-                              header=None, names=['name'])
-            mdf['name'] = mdf['name'].str.replace('\t', ' ', regex=True)
-            mdf['name'] = mdf['name'].str.strip()
+            mdf = pd.read_csv(mfn, delimiter="\t", encoding="Windows-1251",
+                              header=None, error_bad_lines=False).transpose()
+            mdf.columns = mdf.iloc[0]
+            mdf = mdf.drop(labels=0, axis=0).dropna(how='all')
             mdf['filename'] = mfn
             meta_df.append(mdf)
-        meta_df = pd.concat(meta_df).groupby(by='name').agg({'filename': lambda x: list(x)}).reset_index()
-        meta_df['user_id'] = np.arange(0, len(meta_df))
-        users = [User(user_id=row['user_id'], user_name=row['name'], sessions_fns=row['filename'])
-                 for i, row in meta_df[['user_id', 'name', 'filename']].iterrows()]
+        meta_df = pd.concat(meta_df).reset_index(drop=True)
+        meta_df['full_name'] = (meta_df['last_name'].fillna("") + " " + meta_df['first_name'].fillna("")).str.strip()
+        meta_df['full_name'] = meta_df['full_name'].apply(lambda x: x.replace(r"  ", r" "))
+        meta_df['session_filename'] = meta_df.filename.apply(lambda x: ("_".join(x.split("_")[:-1]) + ".csv"))
+        meta_df['user_id'] = meta_df.full_name.replace(
+            to_replace={user: i for i, user in enumerate(meta_df.full_name.unique())})
+
+        meta_df = meta_df.groupby(by=['user_id', 'full_name']).agg({'filename': lambda x: list(x),
+                                                            'session_filename': lambda x: list(x)}).reset_index()
+        users = [User(user_id=row['user_id'], user_name=row['full_name'], sessions_fns=row['filename'])
+                 for i, row in meta_df[['user_id', 'full_name', 'filename']].iterrows()]
         return (users, meta_df['user_id'].to_list())
 
     def __create_sessions(self):
@@ -223,12 +231,15 @@ class RunDataset:
 if __name__ == "__main__":
 
     config_path = ".\\set_locations.ini"
-    dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export_full\\Export_full"
-    # dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export3"
+    # test_unseen train
+    dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export_full\\test_seen"
     init_config(config_path)
     dataset = TrainDataset(dataset_path)
     print(f"Unique users: {len(dataset._users)} with sessions: {len(dataset._sessions)}")
-    # for user in dataset._users:
-    #     print(user)
-    # gaze_data = dataset.create_dataset()
-    # gaze_data.to_csv(os.path.join(dataset_path + "_results", "all_data.csv"), sep=';', encoding='utf-8')
+    for user in dataset._users:
+        print(user)
+    gaze_data = dataset.create_dataset()
+    print(gaze_data.shape)
+    # all_test_unseen_data
+    gaze_data.to_csv(os.path.join(os.path.dirname(dataset_path), "results", "all_test_seen_data.csv"),
+                     sep=';', encoding='utf-8')

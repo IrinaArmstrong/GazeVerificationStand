@@ -224,7 +224,7 @@ if __name__ == "__main__":
     # init_config(path)
     from eyemovements.filtering import sgolay_filter_dataset
 
-    dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export3_results\\all_data.csv"
+    dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export_full\\Export_full\\results\\all_train_data.csv"
     sess_df = pd.read_csv(dataset_path, sep=';', encoding="utf-8", index_col=0)
     sess_df['timestamp'] = pd.to_datetime(sess_df['timestamps'], unit='s')
     print(f"Dataset length is {sess_df.shape[0]} rows.")

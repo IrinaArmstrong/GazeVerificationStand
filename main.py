@@ -69,17 +69,7 @@ class VerificationStand:
         # Test quality
         _ = evaluate(self._model, dataloader=dataloaders.get('test'),
                      estim_quality=True, threshold=0.55)
-        #         ***** Eval results {} *****
-        # Accuracy score: 0.8027522935779816
-        # Balanced_accuracy_score: 0.8027522935779816
-        #               precision    recall  f1-score   support
-        #
-        #            0       0.79      0.83      0.81       218
-        #            1       0.82      0.78      0.80       218
-        #
-        #     accuracy                           0.80       436
-        #    macro avg       0.80      0.80      0.80       436
-        # weighted avg       0.80      0.80      0.80       436
+
 
 
 

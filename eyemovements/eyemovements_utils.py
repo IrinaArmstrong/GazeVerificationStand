@@ -77,14 +77,18 @@ def clean_short_movements(movements: np.ndarray,
     moves = get_movement_indexes(movements, movements_type)
 
     for move_idxs in moves:
-        if (timestamps[move_idxs[-1]] - timestamps[move_idxs[0]]) < threshold_clean:
-            print(f"[INFO-FILTER]: found too small {GazeState.decode(movements_type)}: {move_idxs}!")
-            prev_type = movements[move_idxs[0] - 1] if (move_idxs[0] - 1) > 0 else move_idxs[0]
-            post_type = movements[move_idxs[-1] + 1] if (move_idxs[-1] + 1) < len(movements) else move_idxs[-1]
-            if prev_type == post_type:
-                movements[move_idxs] = prev_type
-            else:
-                movements[move_idxs] = GazeState.unknown
+        # print(f"Movement length: {len(move_idxs)} from session length: {timestamps.shape[0]}")
+        try:
+            if (timestamps[move_idxs[-1]] - timestamps[move_idxs[0]]) < threshold_clean:
+                print(f"[INFO-FILTER]: found too small {GazeState.decode(movements_type)}: {move_idxs}!")
+                prev_type = movements[move_idxs[0] - 1] if (move_idxs[0] - 1) > 0 else move_idxs[0]
+                post_type = movements[move_idxs[-1] + 1] if (move_idxs[-1] + 1) < len(movements) else move_idxs[-1]
+                if prev_type == post_type:
+                    movements[move_idxs] = prev_type
+                else:
+                    movements[move_idxs] = GazeState.unknown
+        except Exception as e:
+            print(f"Error occured: {e}")
 
     return movements
 
