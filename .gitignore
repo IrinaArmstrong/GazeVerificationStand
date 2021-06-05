@@ -143,7 +143,7 @@ pyvenv.cfg
 pip-selfcheck.json
 
 # Data
-#./data/*
+./data/run/*
 #*.csv
 #*.html
 #*.txt

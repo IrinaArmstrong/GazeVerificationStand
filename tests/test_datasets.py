@@ -38,10 +38,11 @@ class TestDatasets(unittest.TestCase):
 
     def test_train_dataset_creation_estim(self):
         ds = TrainDataset(ds_path=config.get('DataPaths', 'train_data'))
-        for user in ds._users:
-            print(user)
+        print(f"Found unique users: {len(ds._users)}")
         gaze_data = ds.create_dataset()
-        print(f"Dataset shape: {gaze_data.shape}")
+        print(f"\nLength of dataset is: {gaze_data.shape} with columns: {gaze_data.columns}")
+        print(f"\nSize of dataset is {sys.getsizeof(gaze_data) / 1048576} Mb.")
+        print(f"\nUnique stimulus types: {gaze_data['stimulus_type'].unique()}")
         self.assertEqual(True, True)
 
 

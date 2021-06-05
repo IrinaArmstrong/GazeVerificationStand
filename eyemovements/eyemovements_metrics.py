@@ -25,18 +25,18 @@ def estimate_quality(df: pd.DataFrame):
 
     metrics = {
         # Saccades
-        "ANS": average_number_of_saccades(movements, to_average=True),
-        "ASA": average_saccades_amplitude(movements, gaze_data, to_average=True),
-        "ASM": average_saccades_magnitude(movements, gaze_data, to_average=True),
+        "ANS": average_number_of_saccades([movements], to_average=True),
+        "ASA": average_saccades_amplitude([movements], [gaze_data], to_average=True),
+        "ASM": average_saccades_magnitude([movements], [gaze_data], to_average=True),
         # SP
-        "ANSP": average_number_of_sp(movements, to_average=True),
-        "PQlS": PQlS(stimulus_movements, stimulus_velocity,
-                     movements, velocity,
-                     gaze_data, gaze_data, to_average=True),
-        "PQnS": PQnS(stimulus_movements, movements,
-                     gaze_data, stimulus_data, to_average=True),
-        "MisFix": MisFix(stimulus_movements, movements,
-                         gaze_data, to_average=True)
+        "ANSP": average_number_of_sp([movements], to_average=True),
+        "PQlS": PQlS([stimulus_movements], [stimulus_velocity],
+                     [movements], [velocity],
+                     [gaze_data], [gaze_data], to_average=True),
+        "PQnS": PQnS([stimulus_movements], [movements],
+                     [gaze_data], [stimulus_data], to_average=True),
+        "MisFix": MisFix([stimulus_movements], [movements],
+                         [gaze_data], to_average=True)
     }
     return metrics
 

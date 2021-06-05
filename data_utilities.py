@@ -133,6 +133,49 @@ def truncate_dataset(data: List[Dict[str, Any]], max_seq_len: int):
     return ret_data
 
 
+def interpolate_sessions(sessions: pd.DataFrame, x: str, y: str,
+                        beaten_ratio: float=30, min_length: int=500,
+                         verbose: bool = True) -> pd.DataFrame:
+    """
+    Clear missing data to make correct filtration.
+    (Disable its effect on filtration).
+    """
+    sessions['bad_sample'] = sessions.apply(lambda row: 1 if (row[x] < 0 and row[y] < 0) else 0, axis=1)
+
+    # Make non valid frame x any as Nans
+    sessions[x] = sessions[x]
+    sessions[y] = sessions[y]
+    sessions.loc[sessions.bad_sample == 1, x] = np.nan
+    sessions.loc[sessions.bad_sample == 1, y] = np.nan
+
+    # Inside one session - fill with interpolate values with Pandas splines
+    sess_df_filled = []
+    beaten_cnt = 0
+    for group_name, group in tqdm(sessions.groupby(by=['user_id', 'session_id'])):
+        if 100 * (group.bad_sample.sum() / group.shape[0]) >= beaten_ratio:
+            print(f"Broken session with ratio of beaten rows > {beaten_ratio}%")
+            beaten_cnt += 1
+            continue
+        if group.shape[0] < min_length:
+            print(f"Too small session with length < {min_length}: {group.shape[0]}")
+            beaten_cnt += 1
+            continue
+
+        print(f"From data shape: {group.shape[0]} there are {group[x].isna().sum()} NaNs")
+        group[x] = group[x].interpolate(method='polynomial', order=3)
+        group[y] = group[y].interpolate(method='polynomial', order=3)
+
+        if (sum(group[x].isna()) > 0) or (sum(group[y].isna()) > 0):
+            group = group.loc[~group[x].isna()]
+            group = group.loc[~group[y].isna()]
+        sess_df_filled.append(group.reset_index(drop=True))
+
+    sessions = pd.concat(sess_df_filled, axis=0)
+    if verbose:
+        print(f"Cleaned sessions as beaten: {beaten_cnt}")
+        print(f"Sessions after interpolation shape: {sessions.shape}")
+    del sess_df_filled
+    return sessions
 
 
 

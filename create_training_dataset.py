@@ -17,8 +17,9 @@ class Session:
         self._user_id = user_id
 
         self._dataset_fn = "_".join(self._session_path.split("_")[:-1]) + ".csv"
-        self._stimulus_type = "_".join(self._session_path.split("\\")[-1].replace("__", "_").split("_")[-11:-9])
-        #"_".join(self._session_path.split(".")[0].split("_")[-2:])
+        self._stimulus_type = "_".join(self._session_path.split("\\")[-1].replace("__", "_").split("_")[-12:-10])
+        self._stimulus_type = "kot#0" if "kot" in self._stimulus_type else self._stimulus_type
+        self._stimulus_type = "sobaka#0" if "sobaka" in self._stimulus_type else self._stimulus_type
 
 
     def get_gaze_data(self) -> pd.DataFrame:
@@ -65,8 +66,8 @@ class User:
     def __str__(self):
         s = f"User #{self._user_id}: {self._user_name}\n"
         s += f"\nUser has {len(self._sessions)} sessions."
-        # s += f"\nWith {np.unique([sess._stimulus_type for sess in self._sessions])} stimulus types."
-        # s += f"\nSessions"
+        s += f"\nWith {np.unique([sess._stimulus_type for sess in self._sessions])} stimulus types."
+        s += f"\nSessions"
         return s
 
     def __eq__(self, other: object) -> object:
@@ -134,8 +135,11 @@ class TrainDataset:
             return None
 
     def create_dataset(self) -> pd.DataFrame:
-        sess_df = pd.concat([sess.get_gaze_data()
-                             for sess in tqdm(self._sessions, total=len(self._sessions))], axis=0)[self._selected_columns]
+        sess_df = [sess.get_gaze_data() for sess in tqdm(self._sessions, total=len(self._sessions))]
+        # Re-enumerate sessions ids
+        for total_sess_ind, sess in enumerate(sess_df):
+            sess['session_id'] = total_sess_ind
+        sess_df = pd.concat(sess_df, axis=0)[self._selected_columns]
         return sess_df
 
 

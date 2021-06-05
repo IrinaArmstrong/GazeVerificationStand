@@ -18,7 +18,6 @@ class VerificationStand:
         self._config_path = config_path
         init_config(config_path)
         self._model= None
-        self._fgen = FeatureGenerator()
         self._trainer = Trainer()
 
 
@@ -42,8 +41,6 @@ class VerificationStand:
         """
         # Creating dataset
         dataset = create_training_dataset.TrainDataset(config.get('DataPaths', 'train_data'))
-        for user in dataset._users:
-            print(user)
         data = dataset.create_dataset()
         del dataset
 

@@ -12,7 +12,7 @@ from eyemovements.eyemovements_utils import get_movement_indexes, GazeState
 from eyemovements.filtering import sgolay_filter_dataset
 from eyemovements.eyemovements_classifier import IVDT, classify_eyemovements_dataset
 from eyemovements.eyemovements_metrics import estimate_quality
-from data_utilities import horizontal_align_data, groupby_session
+from data_utilities import horizontal_align_data, groupby_session, interpolate_sessions
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -76,6 +76,10 @@ def run_eyemovements_classification(data: pd.DataFrame, is_train: bool,
     :param filtering_kwargs: parameters for Savitsky-Golay filter
     :return: dataframe with SP moves only.
     """
+
+    # Clean beaten sessions and interpolate lost values in gaze data
+    data = interpolate_sessions(data, "gaze_X", "gaze_Y")
+    # Classify
     data = classify_eyemovements_wrapper(data)
 
     if do_estimate_quality:
@@ -84,6 +88,11 @@ def run_eyemovements_classification(data: pd.DataFrame, is_train: bool,
         pprint(metrics)
 
     sp_data = get_sp_moves_dataset(data)
+
+    # Update difference using filtered gaze coordinates
+    sp_data['x_diff'] = sp_data["stim_X"] - sp_data["filtered_X"]
+    sp_data['y_diff'] = sp_data["stim_Y"] - sp_data["filtered_Y"]
+
     if is_train:
         # with known user_id
         sp_data = horizontal_align_data(sp_data,
