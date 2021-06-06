@@ -5,8 +5,8 @@ from typing import (NoReturn, Union, Dict, Any, Tuple, List)
 from helpers import read_json
 from config import init_config, config
 import create_training_dataset
+from data_utilities import preprocess_data, normalize_gaze
 from eyemovements.classification import run_eyemovements_classification
-from generate_features import FeatureGenerator
 from verification.dataloaders import (create_training_dataloaders, create_verification_dataloader,
                                       create_selfverify_dataloader)
 from verification.train_utils import (Trainer, init_model, evaluate, aggregate_SP_predictions)
@@ -47,8 +47,10 @@ class VerificationStand:
         # Make eye movements classification
         data = run_eyemovements_classification(data, is_train=True, do_estimate_quality=True)
 
-        # Extract features
-        data = self._fgen.extract_features(data, is_train=True, rescale=True)
+        # Pre-process and normalize gaze
+        data = preprocess_data(data, is_train=True, params_path=config.get('Preprocessing', 'processing_params'))
+        data = normalize_gaze(data, to_restore=False, to_save=True,
+                              checkpoint_dir=config.get('GazeVerification', 'pretrained_model_location'))
 
         # Create splits for training model
         dataloaders = create_training_dataloaders(data, 20, {"features_cols": self._fgen._feature_columns,

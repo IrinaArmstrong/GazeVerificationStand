@@ -1,11 +1,13 @@
-
+import os
+import joblib
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from itertools import chain
 from typing import (List, Union, Dict, Any)
+from sklearn.preprocessing import StandardScaler
 
-
+from helpers import read_json
 #---------------------------- PREPROCESSING UTILITIES ----------------------------
 
 def groupby_session(data: pd.DataFrame,
@@ -77,7 +79,7 @@ def split_dataset(dataset: pd.DataFrame, label_col_name: str,
     data = []
     guid_cnt = 0
     for i, (label, xy) in tqdm(enumerate(zip(dataset[label_col_name].values,
-                                                      dataset.filter(regex=("[\d]+")).values))):
+                                             dataset.filter(regex=("[\d]+")).values))):
         xy = xy[~np.isnan(xy)]  # not nan values
 
         if len(xy) >= max_seq_len:
@@ -134,7 +136,7 @@ def truncate_dataset(data: List[Dict[str, Any]], max_seq_len: int):
 
 
 def interpolate_sessions(sessions: pd.DataFrame, x: str, y: str,
-                        beaten_ratio: float=30, min_length: int=500,
+                         beaten_ratio: float=30, min_length: int=500,
                          verbose: bool = True) -> pd.DataFrame:
     """
     Clear missing data to make correct filtration.
@@ -177,6 +179,72 @@ def interpolate_sessions(sessions: pd.DataFrame, x: str, y: str,
     del sess_df_filled
     return sessions
 
+def preprocess_data(data: pd.DataFrame, is_train: bool,
+                    params_path: str) -> pd.DataFrame:
+    """
+    Split, pad and truncate time series data.
+    :param data: dataframe with samples
+    :param is_train: mode
+    :param max_seq_length: selected maximum length of sample
+    :param padding_symbol: symbol for padding (default is 0.0)
+    :return: dataframe with processed samples.
+    """
+    meta_columns = ['user_id', 'session_id', 'stimulus_type', 'move_id', 'sp_id']
+    params = dict(read_json(params_path))
+
+    # If stimulus name contains '_' change it to '-'
+    data.stimulus_type = data.stimulus_type.str.replace('_', '-', regex=True)
+    data['length'] = data.apply(lambda row: sum(row.notnull()) - len(meta_columns), axis=1)
+
+    # fixme: There is a bug in columns mapping
+    data.sp_id = data.move_id
+    if is_train:
+        data["ts_id"] = data.apply(lambda row: (str(row['user_id']) +
+                                                "_" + str(row['session_id']) +
+                                                "_" + str(row['sp_id']) +
+                                                "_" + str(row['stimulus_type'])), axis=1)
+    else:
+        data["ts_id"] = data.apply(lambda row: (str(row['session_id']) +
+                                                "_" + str(row['sp_id']) +
+                                                "_" + str(row['stimulus_type'])), axis=1)
+    # Split, pad and truncate
+    data = split_dataset(data, label_col_name='ts_id', max_seq_len=params.get('max_seq_length', 100))
+    data = pad_dataset(data, max_seq_len=params.get('max_seq_length', 100), pad_symbol=params.get('padding_symbol', 0))
+    data = pd.DataFrame(list(truncate_dataset(data, max_seq_len=params.get('max_seq_length', 100))))
+    if is_train:
+        data['user_id'] = data.label.apply(lambda x: x.split("_")[0]).astype(int)
+    else:
+        data['user_id'] = 0
+
+    # data['guid'] = data.label + "_" + data.guid.map(str)
+    data["user_session_id"] = data.label.apply(lambda x: x.split("_")[1]).astype(int)
+    data["sp_id"] = data.label.apply(lambda x: x.split("_")[2]).astype(int)
+    data["stimulus_type"] = data.label.apply(lambda x: x.split("_")[3])
+    data["unique_session_id"] = data.groupby(["user_id", "user_session_id"]).ngroup()
+    data.rename({"guid": "splitted_sp_id"}, axis=1, inplace=True)
+
+    return data
+
+
+def normalize_gaze(data: pd.DataFrame, to_restore: bool=False,
+                   to_save: bool=True, checkpoint_dir: str="models_checkpoints") -> pd.DataFrame:
+    """
+    Re-scale gaze data to zero mean and singular std.
+    """
+    checkpoints = [checkpoint_dir + "/" + name for name in os.listdir(checkpoint_dir)
+                   if "scaler" in name]
+    if to_restore and checkpoints:
+        latest_checkpoint = max(checkpoints, key=os.path.getctime)
+        print(f"Restoring normalizer from: {latest_checkpoint}")
+        scaler = joblib.load(latest_checkpoint)
+        data["data_scaled"] = [list(vec) for vec in scaler.transform(data['data'].to_list())]
+    else:
+        scaler = StandardScaler()
+        data["data_scaled"] = [list(vec) for vec in scaler.fit_transform(data['data'].to_list())]
+    if to_save:
+        _ = joblib.dump(scaler, os.path.join("scaler.pkl"), compress=9)
+
+    return data
 
 
 

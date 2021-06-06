@@ -40,11 +40,9 @@ def create_config(fn: str) -> NoReturn:
     config.set("EyemovementClassification", "model_params",
                "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\settings\\ivdt_params.json")
 
-    config.add_section("FeatureGeneration")
-    config.set("FeatureGeneration", "processing_params",
+    config.add_section("Preprocessing")
+    config.set("Preprocessing", "processing_params",
                "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\settings\\processing_params.json")
-    config.set("FeatureGeneration", "features_params",
-               "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\settings\\features_params.json")
 
     config.add_section("GazeVerification")
     config.set("GazeVerification", "model_params",
