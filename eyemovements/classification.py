@@ -3,14 +3,14 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from pprint import pprint
-from typing import (List)
+from typing import List
 
 
 from config import config
 from helpers import read_json
-from eyemovements.eyemovements_utils import get_movement_indexes, GazeState
+from eyemovements.eyemovements_utils import get_movement_indexes, GazeState, clean_short_movements
 from eyemovements.filtering import sgolay_filter_dataset
-from eyemovements.eyemovements_classifier import IVDT, classify_eyemovements_dataset
+from eyemovements.eyemovements_classifier import IVDT
 from eyemovements.eyemovements_metrics import estimate_quality
 from data_utilities import horizontal_align_data, groupby_session, interpolate_sessions
 
@@ -38,13 +38,42 @@ def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
     return sps
 
 
-def classify_eyemovements_wrapper(data: pd.DataFrame) -> pd.DataFrame:
+def classify_eyemovements_wrapper(data: pd.DataFrame) -> List[pd.DataFrame]:
     """
     Make eye movements classification.
     :param data: dataframe with gaze data
     :return: dataframe with added column with classified movements.
     """
-    data = groupby_session(data)
+
+    def classify_session(sess_data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Run eye movements classification on single session.
+        :return: classified session data as DataFrame.
+        """
+        movements, stats = ivdt.classify_eyemovements(sess_data[gaze_col].values.reshape(-1, 2),
+                                                       sess_data[time_col].values,
+                                                       sess_data[velocity_col].values)
+        # Clean short saccades
+        movements = clean_short_movements(movements, sess_data[time_col],
+                                          movements_type=GazeState.saccade,
+                                          threshold_clean=model_params.get('min_saccade_duration_threshold',
+                                                                                  np.inf))
+        # Clean short fixations
+        movements = clean_short_movements(movements, sess_data[time_col],
+                                          movements_type=GazeState.fixation,
+                                          threshold_clean=model_params.get('min_fixation_duration_threshold',
+                                                                                  np.inf))
+        # Clean short sp
+        movements = clean_short_movements(movements, sess_data[time_col],
+                                          movements_type=GazeState.sp,
+                                          threshold_clean=model_params.get('min_sp_duration_threshold', np.inf))
+        sess_data["movements"] = movements
+        sess_data["movements_type"] = [GazeState.decode(x) for x in sess_data["movements"]]
+        return sess_data
+
+
+
+    data = groupby_session(data)  # -> list of dataframes
     data = sgolay_filter_dataset(data, **dict(read_json(config.get("EyemovementClassification",
                                                  "filtering_params"))))
     model_params = dict(read_json(config.get('EyemovementClassification', 'model_params')))
@@ -55,15 +84,11 @@ def classify_eyemovements_wrapper(data: pd.DataFrame) -> pd.DataFrame:
                 window_size=model_params.get('window_size'),
                 dispersion_threshold=model_params.get('dispersion_threshold'))
 
-    # Filtering
-    thresholds_dict = {'min_saccade_duration_threshold': model_params.get('min_saccade_duration_threshold'),
-                       'max_saccade_duration_threshold': model_params.get('max_saccade_duration_threshold'),
-                       'min_fixation_duration_threshold': model_params.get('min_fixation_duration_threshold'),
-                       'min_sp_duration_threshold': model_params.get('min_sp_duration_threshold')}
+    gaze_col = ['filtered_X', 'filtered_Y']
+    time_col = 'timestamps'
+    velocity_col = 'velocity_sqrt'
 
-    return classify_eyemovements_dataset(ivdt, data, gaze_col=['filtered_X', 'filtered_Y'],
-                                         time_col='timestamps', velocity_col='velocity_sqrt',
-                                         duration_thresholds=thresholds_dict)
+    return list(map(classify_session, data))
 
 
 def run_eyemovements_classification(data: pd.DataFrame, is_train: bool,

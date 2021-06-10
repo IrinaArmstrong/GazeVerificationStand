@@ -13,6 +13,7 @@ from eyemovements.filtering import sgolay_filter_dataset
 from data_utilities import groupby_session, horizontal_align_data, interpolate_sessions
 from eyemovements.classification import (get_sp_moves_dataset, IVDT, GazeState)
 from eyemovements.eyemovements_metrics import estimate_quality
+from eyemovements.classification import classify_eyemovements_wrapper
 from visualization import visualize_eyemovements
 
 import warnings
@@ -75,9 +76,13 @@ class TestEyemovementsModule(unittest.TestCase):
         print("Statistics of dispersion:\n", pd.Series(stats).describe())
         visualize_eyemovements(sess[sess_num], fn="eyemovements",
                                y_col="gaze_Y", x_col='gaze_X', time_col="timestamps", color="movements_type")
-        metrics = estimate_quality(sess[sess_num])
+        metrics = estimate_quality([sess[sess_num]])
         print("Eye movements classification metrics:")
         pprint(metrics)
+
+    def test_full_classification(self):
+        data = classify_eyemovements_wrapper(self.train_dataset)
+        self.assertEqual(self.train_dataset['session_id'].nunique(), len(data))
 
 
 

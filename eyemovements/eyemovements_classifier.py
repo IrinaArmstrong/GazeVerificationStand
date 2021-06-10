@@ -1,14 +1,12 @@
 # Basic
 import numpy as np
-import pandas as pd
-from tqdm import tqdm
 from itertools import chain
-from typing import List, Tuple, Union, Dict
+from typing import List, Tuple
 
 import warnings
 warnings.filterwarnings('ignore')
 
-from eyemovements.eyemovements_utils import (GazeState, GazeAnalyzer, clean_short_movements)
+from eyemovements.eyemovements_utils import (GazeState, GazeAnalyzer)
 
 
 class IVDT(GazeAnalyzer):
@@ -189,75 +187,3 @@ class IVDT(GazeAnalyzer):
     @dispersion_threshold.setter
     def dispersion_threshold(self, ds: float):
         self._dispersion_threshold = ds
-
-
-
-def classify_eyemovements_dataset(model: GazeAnalyzer, data: List[pd.DataFrame],
-                                  gaze_col: Union[str, List[str]],
-                                  time_col: str, velocity_col: str,
-                                  duration_thresholds: Dict[str, float]):
-    for df in tqdm(data):
-        print(f"\nUser id: {df['user_id'].unique()[0]}")
-        print(f"Stimulus type: {df['stimulus_type'].unique()[0]}")
-        movements, stats = model.classify_eyemovements(df[gaze_col].values.reshape(-1, 2),
-                                                       df[time_col].values,
-                                                       df[velocity_col].values)
-        # Clean short saccades
-        movements = clean_short_movements(movements, df[time_col],
-                                          movements_type=GazeState.saccade,
-                                          threshold_clean=duration_thresholds.get('min_saccade_duration_threshold', np.inf))
-        # Clean short fixations
-        movements = clean_short_movements(movements, df[time_col],
-                                          movements_type=GazeState.fixation,
-                                          threshold_clean=duration_thresholds.get('min_fixation_duration_threshold', np.inf))
-        # Clean short sp
-        movements = clean_short_movements(movements, df[time_col],
-                                          movements_type=GazeState.sp,
-                                          threshold_clean=duration_thresholds.get('min_sp_duration_threshold', np.inf))
-        df["movements"] = movements
-        df["movements_type"] = [GazeState.decode(x) for x in df["movements"]]
-
-    return data
-
-if __name__ == "__main__":
-    # path = ".\\set_locations.ini"
-    # init_config(path)
-    from eyemovements.filtering import sgolay_filter_dataset
-
-    dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export_full\\Export_full\\results\\all_train_data.csv"
-    sess_df = pd.read_csv(dataset_path, sep=';', encoding="utf-8", index_col=0)
-    sess_df['timestamp'] = pd.to_datetime(sess_df['timestamps'], unit='s')
-    print(f"Dataset length is {sess_df.shape[0]} rows.")
-
-    # Or to list of dataframes
-    sess_data = []
-    for group_name, group in sess_df.groupby(by=['user_id', 'session_id']):
-        group['user_id'] = group_name[0]
-        group['session_id'] = group_name[1]
-        if group.shape[0] > 50:
-            sess_data.append(group)
-    print(f"Result data length: {len(sess_data)}")
-
-    # Filtering
-    sess_data = sgolay_filter_dataset(sess_data, window_size=15, order=6, derivative='col')
-
-    # IVDT parameters
-    saccade_min_velocity = 5  # 0.8
-    dispersion_threshold = 5  # 100
-    window_size = 10  # 120
-
-    # Filtering (in seconds)
-    thresholds_dict = {'min_saccade_duration_threshold': 0.0002,
-                        'max_saccade_duration_threshold': 0.001,
-                        'min_fixation_duration_threshold': 0.001,
-                        'min_sp_duration_threshold': 0.002}
-
-    ivdt = IVDT(saccade_min_velocity=saccade_min_velocity,
-                saccade_min_duration=thresholds_dict.get('min_saccade_duration_threshold'),
-                saccade_max_duration=thresholds_dict.get('max_saccade_duration_threshold'),
-                window_size=window_size,
-                dispersion_threshold=dispersion_threshold)
-
-    data = classify_eyemovements_dataset(ivdt, sess_data, gaze_col=['filtered_X', 'filtered_Y'],
-                                         time_col='timestamps', velocity_col='velocity_sqrt',
-                                         duration_thresholds=thresholds_dict)

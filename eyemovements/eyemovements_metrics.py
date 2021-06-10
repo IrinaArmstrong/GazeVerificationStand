@@ -1,5 +1,4 @@
 # Basic
-import os
 import sys
 sys.path.insert(0, "..")
 
@@ -14,29 +13,29 @@ from eyemovements.eyemovements_utils import (get_movement_indexes, GazeState,
                                  get_amplitude_and_angle, get_path_and_centroid)
 
 
-def estimate_quality(df: pd.DataFrame):
-    movements = df.movements.values
-    gaze_data = df[['gaze_X', 'gaze_Y']].values
-    velocity = df['velocity_sqrt'].values
+def estimate_quality(sessions_data: List[pd.DataFrame]):
+    movements = [df.movements.values for df in sessions_data]
+    gaze_data = [df[['gaze_X', 'gaze_Y']].values for df in sessions_data]
+    velocity = [df['velocity_sqrt'].values for df in sessions_data]
     # All stimulus movements - are smooth persuites
-    stimulus_movements = np.full_like(df.movements.values, 3)
-    stimulus_data = df[['stim_X', 'stim_Y']].values
-    stimulus_velocity = df[['stimulus_velocity']].values
+    stimulus_movements = [np.full_like(df.movements.values, 3) for df in sessions_data]
+    stimulus_data = [df[['stim_X', 'stim_Y']].values for df in sessions_data]
+    stimulus_velocity = [df[['stimulus_velocity']].values for df in sessions_data]
 
     metrics = {
         # Saccades
-        "ANS": average_number_of_saccades([movements], to_average=True),
-        "ASA": average_saccades_amplitude([movements], [gaze_data], to_average=True),
-        "ASM": average_saccades_magnitude([movements], [gaze_data], to_average=True),
+        "ANS": average_number_of_saccades(movements, to_average=True),
+        "ASA": average_saccades_amplitude(movements, gaze_data, to_average=True),
+        "ASM": average_saccades_magnitude(movements, gaze_data, to_average=True),
         # SP
-        "ANSP": average_number_of_sp([movements], to_average=True),
-        "PQlS": PQlS([stimulus_movements], [stimulus_velocity],
-                     [movements], [velocity],
-                     [gaze_data], [gaze_data], to_average=True),
-        "PQnS": PQnS([stimulus_movements], [movements],
-                     [gaze_data], [stimulus_data], to_average=True),
-        "MisFix": MisFix([stimulus_movements], [movements],
-                         [gaze_data], to_average=True)
+        "ANSP": average_number_of_sp(movements, to_average=True),
+        "PQlS": PQlS(stimulus_movements, stimulus_velocity,
+                     movements, velocity,
+                     gaze_data, gaze_data, to_average=True),
+        "PQnS": PQnS(stimulus_movements, movements,
+                     gaze_data, stimulus_data, to_average=True),
+        "MisFix": MisFix(stimulus_movements, movements,
+                         gaze_data, to_average=True)
     }
     return metrics
 
