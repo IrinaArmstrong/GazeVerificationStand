@@ -30,16 +30,6 @@ class TestEyemovementsModule(unittest.TestCase):
         print(f"Unique users: {self.train_dataset['user_id'].nunique()}")
         print(f"Unique sessions: {self.train_dataset['session_id'].nunique()}")
 
-    def test_interpolation(self):
-        initial_num_sess = self.train_dataset.session_id.nunique()
-        beat_sess_id = random.choice(self.train_dataset.session_id.unique())
-        sess_len = self.train_dataset.loc[self.train_dataset.session_id == beat_sess_id].shape[0]
-        if sess_len > 500:
-            self.train_dataset.loc[self.train_dataset.session_id == beat_sess_id, "gaze_X"] = -100
-            self.train_dataset.loc[self.train_dataset.session_id == beat_sess_id, "gaze_Y"] = -100
-
-        self.train_dataset = interpolate_sessions(self.train_dataset, "gaze_X", "gaze_Y")
-        self.assertEqual(initial_num_sess - 1, self.train_dataset.session_id.nunique())
 
     def test_groupby_session(self):
         sess = groupby_session(self.train_dataset)
@@ -85,7 +75,6 @@ class TestEyemovementsModule(unittest.TestCase):
         self.assertEqual(self.train_dataset['session_id'].nunique(), len(data))
 
 
-
     def test_get_sp_moves_dataset(self):
         testing_df = [pd.DataFrame({'movements': 10*[1] + 4*[3] + 6*[2] + 10*[3]})]
         sp_data = get_sp_moves_dataset(testing_df)
@@ -94,17 +83,7 @@ class TestEyemovementsModule(unittest.TestCase):
         self.assertEqual(10, sp_data.loc[sp_data['move_id'] == 1].shape[0])
 
 
-    def test_horizontal_align_data(self):
-        testing_df = pd.DataFrame({'movements': 20*[3],
-                                    'session_id': 10*[0] + 10*[1],
-                                    'x': np.random.random_sample(20),
-                                    'y': np.random.random_sample(20),
-                                    'move_id': 5*[0] + 5*[1] + 5*[2] + 5*[3]})
-        testing_hdf = horizontal_align_data(testing_df,
-                                            grouping_cols=['session_id', 'move_id'],
-                                            aligning_cols=['x', 'y'])
-        self.assertEqual(4, testing_hdf.shape[0])
-        self.assertEqual(12, testing_hdf.shape[1])
+
 
 
 if __name__ == '__main__':

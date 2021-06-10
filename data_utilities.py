@@ -52,30 +52,38 @@ def vertical_align_data(data: pd.DataFrame,
                         data_col: Union[str, List[str]],
                         target_col: str,
                         guid_col: str) -> pd.DataFrame:
-    # Transforms to long forme DF
-    ts_df = []
+    """
+    Transforms to long formed DataFrame: as one row == one gaze coordinate.
+    :param data: initial dataset;
+    :param data_col: x and y gaze coordinates columns names;
+    :param target_col: target (user id);
+    :param guid_col: unique identifier for session;
+    :return: long DataFrame.
+    """
+    #
+    df = pd.DataFrame(columns=['x', 'y', 'label', 'guid'])
     for i, row in data.iterrows():
-        df = pd.DataFrame(columns=['x', 'y', 'label', 'guid'])
+        vrow = {}
         if type(data_col) == str:
             # Joined array of x and y
-            df['x'] = row[data_col].reshape(-1, 2)[:, 0]
-            df['y'] = row[data_col].reshape(-1, 2)[:, 1]
+            vrow['x'] = row[data_col].reshape(-1, 2)[:, 0]
+            vrow['y'] = row[data_col].reshape(-1, 2)[:, 1]
         else:
             # Separately x and y
-            df['x'] = row[data_col[0]]
-            df['y'] = row[data_col[1]]
-        df['label'] = row[target_col]
-        df['guid'] = row[guid_col]
-        ts_df.append(df)
+            vrow['x'] = row[data_col[0]]
+            vrow['y'] = row[data_col[1]]
+        vrow['label'] = row[target_col]
+        vrow['guid'] = row[guid_col]
+        df = df.append(vrow, ignore_index=True)
 
-    data = pd.concat(ts_df).reset_index().rename({"index": "i"}, axis=1)
+    data = df.reset_index().rename({"index": "i"}, axis=1)
+    del df
     data.label = data.label.astype(int)
     return data
 
 
-
 def split_dataset(dataset: pd.DataFrame, label_col_name: str,
-                  max_seq_len: int):
+                  max_seq_len: int) -> List[Dict[str, Any]]:
     data = []
     guid_cnt = 0
     for i, (label, xy) in tqdm(enumerate(zip(dataset[label_col_name].values,
@@ -99,7 +107,7 @@ def split_dataset(dataset: pd.DataFrame, label_col_name: str,
 
 
 def pad_dataset(data: List[Dict[str, Any]], max_seq_len: int,
-                pad_symbol: float):
+                pad_symbol: float) -> List[Dict[str, Any]]:
     ret_data = []
     try:
         for _ in range(len(data)):
@@ -108,7 +116,7 @@ def pad_dataset(data: List[Dict[str, Any]], max_seq_len: int,
                 ret_data.append({'guid': data_pair['guid'],
                                  'data': np.pad(data_pair['data'],
                                                 pad_width=(0, max_seq_len - len(data_pair['data'])),
-                                                mode='constant', constant_values=0.0),
+                                                mode='constant', constant_values=pad_symbol),
                                  'label': data_pair['label']})
             else:
                 ret_data.append(data_pair)
@@ -118,7 +126,7 @@ def pad_dataset(data: List[Dict[str, Any]], max_seq_len: int,
     return ret_data
 
 
-def truncate_dataset(data: List[Dict[str, Any]], max_seq_len: int):
+def truncate_dataset(data: List[Dict[str, Any]], max_seq_len: int) -> List[Dict[str, Any]]:
     ret_data = []
     try:
         for _ in range(len(data)):
@@ -179,6 +187,7 @@ def interpolate_sessions(sessions: pd.DataFrame, x: str, y: str,
     del sess_df_filled
     return sessions
 
+
 def preprocess_data(data: pd.DataFrame, is_train: bool,
                     params_path: str) -> pd.DataFrame:
     """
@@ -222,7 +231,6 @@ def preprocess_data(data: pd.DataFrame, is_train: bool,
     data["stimulus_type"] = data.label.apply(lambda x: x.split("_")[3])
     data["unique_session_id"] = data.groupby(["user_id", "user_session_id"]).ngroup()
     data.rename({"guid": "splitted_sp_id"}, axis=1, inplace=True)
-
     return data
 
 
