@@ -2,10 +2,9 @@
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from pprint import pprint
 from typing import List
 
-
+import logging_handler
 from config import config
 from helpers import read_json
 from eyemovements.eyemovements_utils import get_movement_indexes, GazeState, clean_short_movements
@@ -14,9 +13,11 @@ from eyemovements.eyemovements_classifier import IVDT
 from eyemovements.eyemovements_metrics import estimate_quality
 from data_utilities import horizontal_align_data, groupby_session, interpolate_sessions
 
+
+
 import warnings
 warnings.filterwarnings('ignore')
-
+logger = logging_handler.get_logger(__name__)
 
 def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
     """
@@ -33,7 +34,7 @@ def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
     for i, sp_df in enumerate(sps):
         sp_df.loc[:, 'move_id'] = i
 
-    print(f"In classified sessions there are {len(sps)} with total length: {np.sum([len(s) for s in sps])} SP.")
+    logger.info(f"In classified sessions there are {len(sps)} with total length: {np.sum([len(s) for s in sps])} SP.")
     sps = pd.concat(sps, ignore_index=True)
     return sps
 
@@ -109,8 +110,7 @@ def run_eyemovements_classification(data: pd.DataFrame, is_train: bool,
 
     if do_estimate_quality:
         metrics = estimate_quality(data)
-        print("Eye movements classification metrics:")
-        pprint(metrics)
+        logger.info(f"Eye movements classification metrics:\n{metrics}")
 
     sp_data = get_sp_moves_dataset(data)
 

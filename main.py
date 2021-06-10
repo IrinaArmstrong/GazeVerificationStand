@@ -12,6 +12,9 @@ from verification.dataloaders import (create_training_dataloaders, create_verifi
 from verification.train_utils import (Trainer, init_model, evaluate, aggregate_SP_predictions)
 from visualization import visualize_quality
 
+import logging_handler
+
+
 class VerificationStand:
 
     def __init__(self, config_path: str):
@@ -193,9 +196,7 @@ class VerificationStand:
         return aggregate_SP_predictions(predictions, session_threshold, policy=policy)
 
 
-
-
-
 if __name__ == "__main__":
+    logger = logging_handler.get_logger(__name__)
     stand = VerificationStand(".\\set_locations.ini")
     stand.run("run")

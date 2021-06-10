@@ -1,6 +1,5 @@
 import os
 import glob
-
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -8,6 +7,8 @@ from typing import (List, Union, Tuple)
 
 from config import init_config, config
 
+import logging_handler
+logger = logging_handler.get_logger(__name__)
 
 class Session:
 
@@ -59,7 +60,7 @@ class User:
 
     def get_session(self, sess_id: int) -> Session:
         if sess_id > len(self._sessions):
-            print("Session index out of range!")
+            logger.warning(f"Session id:{sess_id} index out of range!")
             return None
         return self._sessions[sess_id]
 
@@ -131,6 +132,7 @@ class TrainDataset:
         if user_id in self._users_ids:
             return self._users[self._users_ids.index(user_id)]
         else:
+
             print("User index out of range!")
             return None
 

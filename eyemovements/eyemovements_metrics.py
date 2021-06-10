@@ -105,7 +105,6 @@ def FQnS(stimulus_dataset: List[np.ndarray],
                         if euclidean((xs, ys), (xc, yc)) <= amplitude_coef * sac_amplitude:
                             fixations_detected_cnt += 1
 
-        print(f"[INFO-METRICS]: Fixations_detected_cnt: {fixations_detected_cnt}")
         fqns = 100 * (fixations_detected_cnt / stimulus_fix_points_num)
         fqns_estims.append(fqns)
     return fqns_estims
@@ -312,7 +311,6 @@ def MisFix(stimulus_dataset: List[np.ndarray], gaze_dataset: List[np.ndarray],
         mis_class = len([stim_fix_p for stim_fix_p in stimulus_all_fix if stim_fix_p in gaze_sp])
         misfix = 100 * (mis_class / (stimulus_fix_points_num + sys.float_info.epsilon))
         misfix_estims.append(misfix)
-        # print(f"[INFO-METRICS]: Misfix: {misfix}, fix classfied as sp: {mis_class} from total {stimulus_fix_points_num} fix points.")
 
     if to_average:
         return np.mean(misfix_estims)
@@ -334,7 +332,6 @@ def get_prev_saccade(movements: np.ndarray, fix_start_index: int):
             return saccade
         else:
             i -= 1
-    print("[INFO]: Not saccades found!")
     return saccade
 
 def get_closest_centroid(centroid: List[float],
