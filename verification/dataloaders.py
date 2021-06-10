@@ -4,15 +4,18 @@ import pandas as pd
 from tqdm import tqdm
 from itertools import product
 from collections import namedtuple, defaultdict
-from typing import (List, Dict, Any)
+from typing import (List, Dict, Any, Tuple, Optional)
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 
 import torch
 from torch.utils.data import (DataLoader, Dataset, TensorDataset)
 
+import logging_handler
+logger = logging_handler.get_logger(__name__)
 
-#---------------------------- PREPROCESSING UTILITIES ----------------------------
+
+#---------------------------- Verification ----------------------------
 
 Example = namedtuple("Example", ["guid", "data", "label"])
 ContrastiveExample = namedtuple("ContrastiveExample", ["example_0", "example_1", "label"])
@@ -75,68 +78,212 @@ def wrap_dataset(data: np.ndarray, labels: np.ndarray) -> List[Example]:
             in tqdm(enumerate(zip(data, labels)))]
 
 
+# --------------------------- Training -----------------------------
 
-def create_splits(data: pd.DataFrame, features_cols: List[str],
-                  target_col: str, encode_target: bool,
+
+def train_val_split(df: pd.DataFrame, session_id_col: str,
+                    target_col: str, val_ratio: float):
+    train_sess_ids, val_sess_ids = train_test_split(df[session_id_col].unique(),
+                                                    test_size=val_ratio, random_state=11,
+                                                    stratify=df.groupby(by=session_id_col)[target_col].apply(lambda x:
+                                                                                                              x.unique()[
+                                                                                                                  0]).values)
+    train_df = df.loc[df[session_id_col].isin(train_sess_ids)]
+    val_df = df.loc[df[session_id_col].isin(val_sess_ids)]
+    logger.info(f"Train dataset of {train_df[target_col].nunique()} users with shape: {train_df.shape}")
+    logger.info(f"Validation dataset of {val_df[target_col].nunique()} users with shape: {val_df.shape}")
+    return train_df, val_df
+
+
+def train_test_split_by_user(df: pd.DataFrame,
+                             target_col: str, n_users_test: int):
+    unseen_users = set()
+    while len(unseen_users) < n_users_test:
+        unseen_users.add(random.choice(df[target_col].unique(), k=n_users_test))
+    unseen_users = list(unseen_users)
+    test_df = df.loc[df[target_col].isin(unseen_users)]
+    train_df = df.loc[~df[target_col].isin(unseen_users)]
+    logger.info(f"Train dataset of {train_df[target_col].nunique()} users with shape: {train_df.shape}")
+    logger.info(f"Test dataset of {test_df[target_col].nunique()} users with shape: {test_df.shape}")
+    return train_df, test_df
+
+
+def create_splits(data: pd.DataFrame, session_id_col: str,
+                  data_col: str, target_col: str, encode_target: bool,
                   val_split_ratio: float,
                   estim_quality: bool=False,
-                  test_split_ratio: float=None):
+                  n_users_test: int=None):
     """
-    Creates train/val/test splits.
-    :param data: dataframe with generated features
-    :param features_cols: features column names
-    :param target_col: target column name
-    :param encode_target: whether to encode target to numeric type (and return encoder)
-    :param val_split_ratio: validation data split (0 < ratio < 1)
-    :param estim_quality: whether to make prediction on test data (and create test dataset)
-    :param test_split_ratio: test data split (0 < ratio < 1)
+    Creates train/val splits.
     :return: data splits (and label encoder for target).
     """
-    splits = defaultdict()
-
+    splits = {}
     if encode_target:
         le = LabelEncoder().fit(data[target_col].values)
         data[target_col] = le.transform(data[target_col].values)
-        print(f"Totally classes encoded: {len(list(le.classes_))}")
+        logger.info(f"Totally classes encoded: {len(list(le.classes_))}")
 
-    if estim_quality and test_split_ratio:
-        (train_data, test_data, train_targ, test_targ) = train_test_split(data[features_cols].values,
-                                                                          data[target_col].astype(int).values.reshape(-1),
-                                                                          test_size=test_split_ratio,
-                                                                          random_state=11,
-                                                                          stratify=data[target_col].astype(int).values.reshape(-1))
-        (test_data, val_data, test_targ, val_targ) = train_test_split(test_data,
-                                                                      test_targ,
-                                                                      test_size=val_split_ratio,
-                                                                      random_state=11,
-                                                                      stratify=test_targ)
-        print(f"Data shapes train: {train_data.shape}, validation: {val_data.shape}, test: {test_data.shape}")
-        splits['train'] = (train_data, train_targ)
-        splits['val'] = (val_data, val_targ)
-        splits['test'] = (test_data, test_targ)
-    else:
-        (train_data, val_data, train_targ, val_targ) = train_test_split(data[features_cols].values,
-                                                                        data[target_col].astype(int).values.reshape(-1),
-                                                                        test_size=val_split_ratio,
-                                                                        random_state=11,
-                                                                        stratify=data[target_col].astype(int).values.reshape(-1))
-        print(f"Data shapes train: {train_data.shape}, validation: {val_data.shape}")
-        splits['train'] = (train_data, train_targ)
-        splits['val'] = (val_data, val_targ)
+    if estim_quality and n_users_test:
+        data, test_data = train_test_split_by_user(data, target_col=target_col, n_users_test=n_users_test)
+        splits['test'] = (test_data[data_col], test_data[target_col])
+
+    train_data, val_data = train_val_split(data, session_id_col=session_id_col, val_ratio=val_split_ratio)
+    splits['train'] = (train_data[data_col], train_data[target_col])
+    splits['val'] = (val_data[data_col], val_data[target_col])
     if encode_target:
         return splits, le
     else:
         return splits
 
 
+class SessionsDataset(Dataset):
 
-def create_training_dataloaders(data: pd.DataFrame, batch_size: int,
-                                splitting_params: Dict[str, Any]):
+    def __init__(self, data: np.ndarray, targets: np.ndarray,
+                 mode: str = 'train', transform=None, target_transform=None):
+        super(SessionsDataset, self).__init__()
+        self._data = data
+        self._targets = targets
+        self._mode = mode
+        self._transform = transform
+        self._target_transform = target_transform
+
+        self._unique_classes, self._n_classes = self._get_classes(self._targets)
+        self._cls2id, self._id2cls = self._index_classes(self._unique_classes)
+
+    def _get_classes(self, classes: np.ndarray):
+        unique_classes = np.unique(classes)
+        print(f" ---- Dataset: Found {len(unique_classes)} classes ---- ")
+        return unique_classes, len(unique_classes)
+
+    def _index_classes(self, unique_classes: np.ndarray, inverse: bool = True):
+        inds = defaultdict()
+        for i, cls in enumerate(unique_classes):
+            inds[cls] = i
+        if inverse:
+            inv_inds = {v: k for k, v in inds.items()}
+            return dict(inds), inv_inds
+        return inds
+
+    def __getitem__(self, idx):
+        x = self._data[idx]
+        y = self._targets[idx]
+        if self._transform:
+            x = self._transform(x)
+        if self._target_transform:
+            y = self._target_transform(y)
+        return x, y
+
+    def __len__(self):
+        return len(self._data)
+
+
+def init_dataset(data, targets, mode, transform=None, target_transform=None):
+    dataset = SessionsDataset(data, targets, mode=mode,
+                              transform=transform, target_transform=target_transform)
+    return dataset
+
+
+class PrototypicalBatchSampler(object):
+    '''
+    PrototypicalBatchSampler: yield a batch of indexes at each iteration.
+    Indexes are calculated by keeping in account 'classes_per_it' and 'num_samples',
+    In fact at every iteration the batch indexes will refer to  'num_support' + 'num_query' samples
+    for 'classes_per_it' random classes.
+    __len__ returns the number of episodes per epoch (same as 'self.iterations').
+    '''
+
+    def __init__(self, labels, classes_per_it, num_samples, iterations):
+        '''
+        Initialize the PrototypicalBatchSampler object
+        Args:
+        - labels: an iterable containing all the labels for the current dataset
+        samples indexes will be infered from this iterable.
+        - classes_per_it: number of random classes for each iteration
+        - num_samples: number of samples for each iteration for each class (support + query)
+        - iterations: number of iterations (episodes) per epoch
+        '''
+        super(PrototypicalBatchSampler, self).__init__()
+        self.labels = labels
+        self.classes_per_it = classes_per_it
+        self.sample_per_class = num_samples
+        self.iterations = iterations
+
+        self.classes, self.counts = np.unique(self.labels, return_counts=True) # in sorted order
+        self.classes = torch.LongTensor(self.classes)
+
+        # create a matrix, indexes, of dim: classes X max(elements per class)
+        # fill it with nans
+        # for every class c, fill the relative row with the indices samples belonging to c
+        # in numel_per_class we store the number of samples for each class/row
+        self.idxs = range(len(self.labels))
+        self.indexes = np.empty((len(self.classes), max(self.counts)), dtype=int) * np.nan
+        self.indexes = torch.Tensor(self.indexes)
+        self.numel_per_class = torch.zeros_like(self.classes)
+        for idx, label in enumerate(self.labels):
+            label_idx = np.argwhere(self.classes == label).item()
+            self.indexes[label_idx, np.where(np.isnan(self.indexes[label_idx]))[0][0]] = idx
+            self.numel_per_class[label_idx] += 1
+
+    def __iter__(self):
+        '''
+        Yield a batch of indexes of samples from data.
+        '''
+        spc = self.sample_per_class
+        cpi = self.classes_per_it
+
+        for it in range(self.iterations):
+            batch_size = spc * cpi
+            batch = torch.LongTensor(batch_size)
+            c_idxs = torch.randperm(len(self.classes))[:cpi]  # select cpi random classes for iteration
+            last_ind = 0
+            for i, c in enumerate(self.classes[c_idxs]):
+                s = slice(i * spc, (i + 1) * spc)  # create slice
+                # FIXME when torch.argwhere will exists
+                label_idx = torch.arange(len(self.classes)).long()[self.classes == c].item()
+                sample_idxs = torch.randperm(self.numel_per_class[label_idx])[:spc]
+                if len(sample_idxs) < spc:
+                    sample_idxs = random.choices(np.arange(self.numel_per_class[label_idx]), k=spc)
+                batch[s] = self.indexes[label_idx][sample_idxs]
+            batch = batch[torch.randperm(len(batch))]
+            yield batch
+
+    def __len__(self):
+        '''
+        returns the number of iterations (episodes) per epoch
+        '''
+        return self.iterations
+
+
+def init_sampler(labels: np.ndarray, mode: str, classes_per_it: int,
+                 iterations: int, num_query: int, num_support: int):
+    num_samples = num_support + num_query
+
+    return PrototypicalBatchSampler(labels=labels,
+                                    classes_per_it=classes_per_it,
+                                    num_samples=num_samples,
+                                    iterations=iterations)
+
+
+def init_dataloader(data, targets, mode: str, classes_per_it: int,
+                    iterations: int, num_query: int, num_support: int):
+    dataset = init_dataset(data, targets, mode)
+    sampler = init_sampler(dataset._targets, mode,
+                           classes_per_it=classes_per_it,
+                           iterations=iterations,
+                           num_query=num_query,
+                           num_support=num_support)
+
+    dataloader = DataLoader(dataset, batch_sampler=sampler)
+    return dataloader
+
+
+def create_training_dataloaders(data: pd.DataFrame, splitting_params: Dict[str, Any],
+                                batching_params: Dict[str, Any]):
     """
     Creates train/val/test dataloaders for Pytorch model training and evaluation.
     :param data: dataframe with generated features
-    :param batch_size: size of single batch
     :param splitting_params: kwargs for splitting function
+    :param batching_params: kwargs for Prototypical Network batching
     :return: dict of dataloaders (and label encoder)
     """
 
@@ -147,10 +294,12 @@ def create_training_dataloaders(data: pd.DataFrame, batch_size: int,
 
     datasets = defaultdict()
     for ds_type, splitted_data in splits.items():
-        datasets[ds_type] = create_contrastive_dataset(wrap_dataset(*splitted_data), batch_size=batch_size)
-        print(f"Dataset {ds_type} length: {len(datasets[ds_type].dataset)}")
-        print(f"Classes balance:\n", pd.Series([ex.label
-                                                for ex in datasets[ds_type].dataset.examples]).value_counts())
+        datasets[ds_type] = init_dataloader(*splitted_data, mode=ds_type,
+                                            classes_per_it=batching_params.get("classes_per_it_train"),
+                                            iterations=batching_params.get("iterations"),
+                                            num_query=batching_params.get("num_query_train"),
+                                            num_support=batching_params.get("num_support_train"))
+        logger.info(f"Dataloader of type: {ds_type} created")
     del splits
     if splitting_params.get('encode_target', False):
         return datasets, encoder
@@ -171,8 +320,6 @@ def create_embeddings_dataloader(data: pd.DataFrame,
     dataset = TensorDataset(torch.from_numpy(data[features_cols].values.astype(np.float32)).float(),
                             torch.from_numpy(data[target_col].values).float())
     dataloader = DataLoader(dataset, batch_size, num_workers=0)
-
-    print(f"Dataset length: {len(dataloader.dataset)}")
     return dataloader
 
 

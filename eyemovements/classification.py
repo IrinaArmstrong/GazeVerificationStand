@@ -14,7 +14,6 @@ from eyemovements.eyemovements_metrics import estimate_quality
 from data_utilities import horizontal_align_data, groupby_session, interpolate_sessions
 
 
-
 import warnings
 warnings.filterwarnings('ignore')
 logger = logging_handler.get_logger(__name__)

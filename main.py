@@ -56,12 +56,7 @@ class VerificationStand:
                               checkpoint_dir=config.get('GazeVerification', 'pretrained_model_location'))
 
         # Create splits for training model
-        dataloaders = create_training_dataloaders(data, 20, {"features_cols": self._fgen._feature_columns,
-                                                             "target_col":  self._fgen._target_column,
-                                                             "encode_target":  False,
-                                                             "val_split_ratio": 0.3,
-                                                             "estim_quality": True,
-                                                             "test_split_ratio": 0.2})
+        dataloaders = create_training_dataloaders(data, splitting_params={},)
         # Run training
         self._model = self._trainer.fit(train_loader=dataloaders.get('train'),
                                         val_loader=dataloaders.get('val'),
