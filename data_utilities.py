@@ -7,7 +7,9 @@ from itertools import chain
 from typing import (List, Union, Dict, Any)
 from sklearn.preprocessing import StandardScaler
 
+import logging_handler
 from helpers import read_json
+logger = logging_handler.get_logger(__name__)
 #---------------------------- PREPROCESSING UTILITIES ----------------------------
 
 def groupby_session(data: pd.DataFrame,
@@ -84,6 +86,14 @@ def vertical_align_data(data: pd.DataFrame,
 
 def split_dataset(dataset: pd.DataFrame, label_col_name: str,
                   max_seq_len: int) -> List[Dict[str, Any]]:
+    """
+    Split dataset samples to equal sized vectors.
+    :param dataset: wide-formed DataFrame,
+                    all data columns named with numbers: 0, 1, 2, ...;
+    :param label_col_name: target value column name;
+    :param max_seq_len: splitting length;
+    :return: list of splitted samples with new ids(==guid).
+    """
     data = []
     guid_cnt = 0
     for i, (label, xy) in tqdm(enumerate(zip(dataset[label_col_name].values,
@@ -108,6 +118,10 @@ def split_dataset(dataset: pd.DataFrame, label_col_name: str,
 
 def pad_dataset(data: List[Dict[str, Any]], max_seq_len: int,
                 pad_symbol: float) -> List[Dict[str, Any]]:
+    """
+    Pad each of data samples to equal length (max_seq_len)
+    with given symbol (pad_symbol).
+    """
     ret_data = []
     try:
         for _ in range(len(data)):
@@ -121,12 +135,15 @@ def pad_dataset(data: List[Dict[str, Any]], max_seq_len: int,
             else:
                 ret_data.append(data_pair)
     except:
-        print("Data list ended.")
+        logger.warning("Data list ended.")
     del data
     return ret_data
 
 
 def truncate_dataset(data: List[Dict[str, Any]], max_seq_len: int) -> List[Dict[str, Any]]:
+    """
+    Truncates given data samples each to equal size.
+    """
     ret_data = []
     try:
         for _ in range(len(data)):
@@ -138,7 +155,7 @@ def truncate_dataset(data: List[Dict[str, Any]], max_seq_len: int) -> List[Dict[
             else:
                 ret_data.append(data_pair)
     except:
-        print("Data list ended.")
+        logger.warning("Data list ended.")
     del data
     return ret_data
 
@@ -163,11 +180,11 @@ def interpolate_sessions(sessions: pd.DataFrame, x: str, y: str,
     beaten_cnt = 0
     for group_name, group in tqdm(sessions.groupby(by=['user_id', 'session_id'])):
         if 100 * (group.bad_sample.sum() / group.shape[0]) >= beaten_ratio:
-            print(f"Broken session with ratio of beaten rows > {beaten_ratio}%")
+            logger.info(f"Broken session with ratio of beaten rows > {beaten_ratio}%")
             beaten_cnt += 1
             continue
         if group.shape[0] < min_length:
-            print(f"Too small session with length < {min_length}: {group.shape[0]}")
+            logger.info(f"Too small session with length < {min_length}: {group.shape[0]}")
             beaten_cnt += 1
             continue
 
@@ -182,8 +199,8 @@ def interpolate_sessions(sessions: pd.DataFrame, x: str, y: str,
 
     sessions = pd.concat(sess_df_filled, axis=0)
     if verbose:
-        print(f"Cleaned sessions as beaten: {beaten_cnt}")
-        print(f"Sessions after interpolation shape: {sessions.shape}")
+        logger.info(f"Cleaned sessions as beaten: {beaten_cnt}")
+        logger.info(f"Sessions after interpolation shape: {sessions.shape}")
     del sess_df_filled
     return sessions
 
@@ -239,18 +256,20 @@ def normalize_gaze(data: pd.DataFrame, to_restore: bool=False,
     """
     Re-scale gaze data to zero mean and singular std.
     """
+    if not os.path.exists(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
     checkpoints = [checkpoint_dir + "/" + name for name in os.listdir(checkpoint_dir)
                    if "scaler" in name]
     if to_restore and checkpoints:
         latest_checkpoint = max(checkpoints, key=os.path.getctime)
-        print(f"Restoring normalizer from: {latest_checkpoint}")
+        logger.info(f"Restoring normalizer from: {latest_checkpoint}")
         scaler = joblib.load(latest_checkpoint)
         data["data_scaled"] = [list(vec) for vec in scaler.transform(data['data'].to_list())]
     else:
         scaler = StandardScaler()
         data["data_scaled"] = [list(vec) for vec in scaler.fit_transform(data['data'].to_list())]
     if to_save:
-        _ = joblib.dump(scaler, os.path.join("scaler.pkl"), compress=9)
+        _ = joblib.dump(scaler, os.path.join(checkpoint_dir, "scaler.pkl"), compress=9)
 
     return data
 

@@ -1,3 +1,4 @@
+import os
 import sys
 import random
 import unittest
@@ -9,7 +10,7 @@ from create_training_dataset import TrainDataset
 from config import config, init_config
 from data_utilities import (split_dataset, truncate_dataset, pad_dataset,
                             vertical_align_data, horizontal_align_data,
-                            interpolate_sessions)
+                            interpolate_sessions, normalize_gaze)
 
 
 class TestFeatureGeneration(unittest.TestCase):
@@ -23,9 +24,6 @@ class TestFeatureGeneration(unittest.TestCase):
                                                                (str(row['session_id']) +
                                                                 "_" + str(row['sp_id']) +
                                                                 "_" + str(row['stimulus_type'])), axis=1)
-        print(f"Shape of loaded data: {self.train_dataset.shape}")
-        print(f"Unique users: {self.train_dataset['user_id'].nunique()}")
-        print(f"Unique sessions: {self.train_dataset['session_id'].nunique()}")
 
 
     def test_interpolation(self):
@@ -54,21 +52,66 @@ class TestFeatureGeneration(unittest.TestCase):
 
 
     def test_vertical_align_data(self):
-        vdata = vertical_align_data(self.train_dataset, data_col=["gaze_X", "gaze_Y"],
+        data = pd.DataFrame({'user_id': 10 * [0] + 10 * [1],
+                                   'session_id': 10 * [0] + 10 * [1],
+                                   'gaze_X': np.random.random_sample(20),
+                                   'gaze_Y': np.random.random_sample(20),
+                                   'ts_id': np.arange(0, 20)})
+        vdata = vertical_align_data(data, data_col=["gaze_X", "gaze_Y"],
                                     target_col='user_id', guid_col='ts_id')
-        self.assertEqual(len(self.train_dataset), len(vdata))
+        self.assertEqual(len(data), len(vdata))
+        self.assertListEqual(['i', 'x', 'y', 'label', 'guid'], list(vdata.columns))
+
 
     def test_split_dataset(self):
-        self.assertEqual(True, True)
+        data = pd.DataFrame.from_dict({str(row): np.random.uniform(0, 1, size=50) + 1 for row in range(10)},
+                                      orient="index")
+        data['label_col'] = "user_0"
+        # Case #1
+        splitted_data = split_dataset(data, label_col_name='label_col', max_seq_len=25)
+        self.assertEqual(len(data) * 2, len(splitted_data))
+        # Case #2
+        splitted_data = split_dataset(data, label_col_name='label_col', max_seq_len=35)
+        self.assertEqual(len(data), len(splitted_data))
+        # Case #3
+        splitted_data = split_dataset(data, label_col_name='label_col', max_seq_len=85)
+        self.assertEqual(0, len(splitted_data))
+
 
     def test_pad_dataset(self):
-        self.assertEqual(True, True)
+        data = [{'guid': row,
+                 "data": np.random.uniform(0, 1, size=row),
+                 'label': 0} for row in range(10)]
+        padded_data = pad_dataset(data, max_seq_len=10, pad_symbol=0.0)
+        self.assertEqual([10] * 10, [len(d.get('data')) for d in padded_data])
 
     def test_truncate_dataset(self):
-        self.assertEqual(True, True)
+        data = [{'guid': row,
+                 "data": np.random.uniform(0, 1, size=row+11),
+                 'label': 0} for row in range(10)]
+        trunc_data = truncate_dataset(data, max_seq_len=10)
+        self.assertEqual([10] * 10, [len(d.get('data')) for d in trunc_data])
 
     def test_normalize_dataset(self):
-        self.assertEqual(True, True)
+        data = pd.DataFrame({'data': [list(np.random.random_integers(1, 20, size=10)) for _ in range(50)]})
+        # Case #1
+        norm_data = normalize_gaze(data, to_restore=False, to_save=True,
+                                   checkpoint_dir=config.get('GazeVerification', 'pretrained_model_location'))
+        self.assertListEqual(["data", "data_scaled"], list(norm_data.columns))
+        self.assertTrue(os.path.isfile(os.path.join(config.get('GazeVerification', 'pretrained_model_location'),
+                                                    "scaler.pkl")))
+        # Case #2
+        norm_data = normalize_gaze(data, to_restore=True, to_save=False,
+                                   checkpoint_dir=config.get('GazeVerification', 'pretrained_model_location'))
+        self.assertListEqual(["data", "data_scaled"], list(norm_data.columns))
+        self.assertTrue(os.path.isfile(os.path.join(config.get('GazeVerification', 'pretrained_model_location'),
+                                                    "scaler.pkl")))
+        try:
+            os.remove(os.path.join(config.get('GazeVerification', 'pretrained_model_location'), "scaler.pkl"))
+        except OSError:
+            pass
+        self.assertFalse(os.path.isfile(os.path.join(config.get('GazeVerification', 'pretrained_model_location'),
+                                                    "scaler.pkl")))
 
 
 if __name__ == '__main__':
