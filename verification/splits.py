@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 import logging_handler
 logger = logging_handler.get_logger(__name__)
 
+#---------------------------- Splitting data ----------------------------
 
 def train_test_split_by_user(df: pd.DataFrame,
                              target_col: str, n_users_test: int):

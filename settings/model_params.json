@@ -1,6 +1,25 @@
 {
-  "siamese_model_params": {"input_size": 128, "hidden_size": 64},
-  "training_options": {"base_lr": 1e-3, "scheduler_max_lr": 0.01, "n_epochs":  30,
-    "log_interval": 100, "scheduler_patience":  2, "scheduler_min_lr":  1e-4,
-    "step_size_up": 5, "warm_start_epoch":  0}
+    "model_params": {
+      "embedding_size": 20
+    },
+    "batching_options": {
+      "classes_per_it_train": 50,
+      "iterations": 400,
+      "num_support_train": 10,
+      "num_query_train": 20,
+      "classes_per_it_val": 25,
+      "num_support_val": 10,
+      "num_query_val": 10
+    },
+    "training_options": {
+      "device": "cpu",
+      "base_lr": 1e-4,
+      "scheduler_max_lr": 0.01,
+      "n_epochs": 100,
+      "log_interval": 100,
+      "es_patience":  10,
+      "scheduler_min_lr":  1e-4,
+      "lr_step_size_up": 5,
+      "lr_scheduler_gamma":  0.1
+    }
 }

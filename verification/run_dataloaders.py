@@ -81,14 +81,9 @@ def create_embeddings_dataloader(data: pd.DataFrame,
                                  target_col: str):
     """
     Creates single dataloader for Pytorch model running.
-    :param data: dataframe with generated features
-    :param batch_size: size of single batch
-    :return: dataloader
     """
-    dataset = TensorDataset(torch.from_numpy(data[features_cols].values.astype(np.float32)).float(),
-                            torch.from_numpy(data[target_col].values).float())
-    dataloader = DataLoader(dataset, batch_size, num_workers=0)
-    return dataloader
+    return DataLoader(TensorDataset(torch.from_numpy(data[features_cols].values.astype(np.float32)).float(),
+                            torch.from_numpy(data[target_col].values).float()), batch_size, num_workers=0)
 
 
 def create_verification_dataloader(data_samples_1: pd.DataFrame,
@@ -138,7 +133,6 @@ def create_verification_dataloader(data_samples_1: pd.DataFrame,
 
 def create_selfverify_dataloader(data_samples: pd.DataFrame,
                                  feature_columns: List[str],
-                                 max_samples: int = 200,
                                  batch_size: int=10) -> DataLoader:
     """
     Create dataset and dataloader for run mode of verification.

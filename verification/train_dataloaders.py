@@ -71,7 +71,7 @@ class PrototypicalBatchSampler(object):
     __len__ returns the number of episodes per epoch (same as 'self.iterations').
     '''
 
-    def __init__(self, labels, classes_per_it, num_samples, iterations):
+    def __init__(self, labels, mode: str, classes_per_it, num_samples, iterations):
         '''
         Initialize the PrototypicalBatchSampler object
         Args:
@@ -83,6 +83,7 @@ class PrototypicalBatchSampler(object):
         '''
         super(PrototypicalBatchSampler, self).__init__()
         self.labels = labels
+        self.mode = mode
         self.classes_per_it = classes_per_it
         self.sample_per_class = num_samples
         self.iterations = iterations
@@ -138,6 +139,7 @@ def init_sampler(labels: np.ndarray, mode: str, classes_per_it: int,
     num_samples = num_support + num_query
 
     return PrototypicalBatchSampler(labels=labels,
+                                    mode=mode,
                                     classes_per_it=classes_per_it,
                                     num_samples=num_samples,
                                     iterations=iterations)
