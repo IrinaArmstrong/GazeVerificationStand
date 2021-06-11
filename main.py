@@ -4,11 +4,11 @@ from typing import (NoReturn, Union, Dict, Any, Tuple, List)
 
 from helpers import read_json
 from config import init_config, config
-import create_training_dataset
+import datasets
 from data_utilities import preprocess_data, normalize_gaze
 from eyemovements.classification import run_eyemovements_classification
-from verification.dataloaders import (create_training_dataloaders, create_verification_dataloader,
-                                      create_selfverify_dataloader)
+from verification.train_dataloaders import (create_training_dataloaders, create_verification_dataloader,
+                                            create_selfverify_dataloader)
 from verification.train_utils import (Trainer, init_model, evaluate, aggregate_SP_predictions)
 from visualization import visualize_quality
 
@@ -43,7 +43,7 @@ class VerificationStand:
         :return: -
         """
         # Creating dataset
-        dataset = create_training_dataset.TrainDataset(config.get('DataPaths', 'train_data'))
+        dataset = datasets.TrainDataset(config.get('DataPaths', 'train_data'))
         data = dataset.create_dataset()
         del dataset
 
@@ -56,7 +56,8 @@ class VerificationStand:
                               checkpoint_dir=config.get('GazeVerification', 'pretrained_model_location'))
 
         # Create splits for training model
-        dataloaders = create_training_dataloaders(data, splitting_params={},)
+        dataloaders = create_training_dataloaders(data, splitting_params={}, batching_params={})
+
         # Run training
         self._model = self._trainer.fit(train_loader=dataloaders.get('train'),
                                         val_loader=dataloaders.get('val'),
@@ -82,9 +83,9 @@ class VerificationStand:
             print(self._model)
 
         # Creating dataset
-        dataset = create_training_dataset.RunDataset(owner_path=config.get('DataPaths', 'owner_data'),
-                                                     others_path=config.get('DataPaths', 'run_data'),
-                                                     estimate_quality=estimate_quality)
+        dataset = datasets.RunDataset(owner_path=config.get('DataPaths', 'owner_data'),
+                                      others_path=config.get('DataPaths', 'run_data'),
+                                      estimate_quality=estimate_quality)
         print("\nOwner:")
         self.__owner = dataset._owner
         print(dataset._owner)

@@ -4,7 +4,7 @@ sys.path.insert(0, '..')
 
 
 from config import config, init_config
-from create_training_dataset import TrainDataset, RunDataset
+from datasets import TrainDataset, RunDataset
 
 
 class TestDatasets(unittest.TestCase):

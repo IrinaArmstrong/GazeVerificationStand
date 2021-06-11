@@ -8,7 +8,7 @@ from pprint import pprint
 
 from helpers import read_json
 from config import config, init_config
-from create_training_dataset import TrainDataset
+from datasets import TrainDataset
 from eyemovements.filtering import sgolay_filter_dataset
 from data_utilities import groupby_session, horizontal_align_data, interpolate_sessions
 from eyemovements.classification import (get_sp_moves_dataset, IVDT, GazeState)

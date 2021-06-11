@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 sys.path.insert(0, '..')
 
-from create_training_dataset import TrainDataset
+from datasets import TrainDataset
 from config import config, init_config
 from data_utilities import (split_dataset, truncate_dataset, pad_dataset,
                             vertical_align_data, horizontal_align_data,
