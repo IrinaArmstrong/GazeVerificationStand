@@ -23,6 +23,7 @@
       "lr_step_size_up": 5,
       "lr_scheduler_gamma":  0.1,
       "tensorboard_log_dir": "tblogs",
-      "to_unsqueeze": false
+      "to_unsqueeze": false,
+      "output_dir": "output"
     }
 }

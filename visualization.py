@@ -176,3 +176,42 @@ def plot_embeddings_2D(embeddings: np.ndarray, targets: np.ndarray):
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
     plotly.offline.plot(fig, filename='./output/embeddings.html')
+
+
+def visualize_training_process(loss_fn: str):
+
+    df_stats = pd.read_csv(loss_fn, sep=';', index_col=0)
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(x=df_stats['Epoch'], y=df_stats['Train Losses'],
+                             mode='lines+markers',
+                             name='Функция потерь на обучающей выборке'))
+    fig.add_trace(go.Scatter(x=df_stats['Epoch'], y=df_stats['Val Losses'],
+                             mode='lines+markers',
+                             name='Функция потерь на валидационной выборке'))
+    fig.update_layout(title='Динамика функции потерь при обучении',
+                      legend=dict(font=dict(
+                          family="Arial", size=14,
+                          orientation="h",
+                          yanchor="bottom",
+                          y=1.02,
+                          xanchor="right",
+                          x=1)),
+                      xaxis=dict(
+                          title='Эпохи',
+                          titlefont=dict(
+                              family='Arial',
+                              size=14,
+                          )
+                      ),
+                      yaxis=dict(
+                          title='Значения функции потерь',
+                          titlefont=dict(
+                              family='Arial',
+                              size=14,
+                          )
+                      )
+                      )
+
+    fig.update_layout(showlegend=True)
+    plotly.offline.plot(fig, filename=f'./output/loss_plot_{loss_fn.split("/")[-1].split(".")[0]}.html')

@@ -1,16 +1,21 @@
 # Basic
-import torch
-import torch.nn as nn
+import sys
+sys.path.insert(0, "..")
 import numpy as np
 from datetime import datetime
+
+import torch
+import torch.nn as nn
 
 from config import config
 from helpers import read_json
 from verification.model import EmbeddingNet
 from verification.early_stopping import EarlyStopping
 from verification.loss import PrototypicalLoss
+from visualization import visualize_training_process
 from verification.train_metrics import LossCallback, TensorboardCallback
-from verification.train_utils import seed_everything, clear_logs_dir, copy_data_to_device
+from verification.train_utils import (seed_everything, clear_logs_dir,
+                                      copy_data_to_device, save_losses_to_file)
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -112,7 +117,12 @@ class Trainer:
                 logger.info(f"Early stopping at {epoch} epoch.")
                 break
 
+        # Get loss history from LossCallback. Always first.
+        save_losses_to_file(self._metrics[0].train_losses, self._metrics[0].train_losses,
+                            save_path=self._parameters.get("training_options", {}).get("output_dir", "."))
+        visualize_training_process()
         return self._model
+
 
     def _train_epoch(self, train_loader: torch.utils.data.DataLoader,
                      epoch_num: int):
