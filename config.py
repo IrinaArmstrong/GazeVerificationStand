@@ -10,7 +10,7 @@ config = configparser.ConfigParser()
 def init_config(fn: str=".\\set_locations.ini") -> NoReturn:
     """
     Initializes the config object.
-     :param fn: path of file to save to or read from.
+     :param fn: _path of file to save to or read from.
      :return: -
     """
     if not os.path.exists(fn):
@@ -21,7 +21,7 @@ def init_config(fn: str=".\\set_locations.ini") -> NoReturn:
 def create_config(fn: str) -> NoReturn:
     """
     Create a config file
-    :param fn: path of file to save to.
+    :param fn: _path of file to save to.
     :return: -
     """
     config.add_section("DataPaths")

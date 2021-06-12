@@ -206,7 +206,7 @@ def get_amplitude_and_angle(gaze: np.ndarray) -> List[float]:
 
 def get_path_and_centroid(gaze: np.ndarray) -> List[float]:
     """
-    Calculate centroid and path length.
+    Calculate centroid and _path length.
     """
     last_x, last_y = 0, 0
     sumx, sumy = 0, 0

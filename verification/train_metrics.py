@@ -3,6 +3,11 @@ import numpy as np
 from collections import defaultdict
 from torch.utils.tensorboard import SummaryWriter
 
+import logging_handler
+logger = logging_handler.get_logger(__name__)
+
+# -------------------- Metrics ---------------------
+
 class Metric:
     def __init__(self):
         pass
@@ -86,11 +91,14 @@ class TensorboardCallback(Metric):
         super(TensorboardCallback, self).__init__()
         self._writer = SummaryWriter(log_dir=log_dir)
 
-    def __call__(self, outputs, target, loss, loss_type, epoch_num):
+    def __call__(self, outputs, target, loss: float, loss_type: str, epoch_num: int):
         if loss_type == "train":
             self._writer.add_scalar('loss/train', loss, epoch_num)
         elif loss_type == "val":
             self._writer.add_scalar('loss/val', loss, epoch_num)
+        else:
+            logger.warning(f"Unknown loss type: {loss_type}")
+            self._writer.add_scalar('loss/unknown', loss, epoch_num)
         return self.value()
 
     def reset(self):
