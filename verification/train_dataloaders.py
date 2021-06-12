@@ -7,11 +7,11 @@ from typing import Dict, Any
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from helpers import read_json
 from verification.splits import create_splits
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
-
 
 # --------------------------- Training -----------------------------
 
@@ -158,15 +158,17 @@ def init_dataloader(data, targets, mode: str, classes_per_it: int,
     return dataloader
 
 
-def create_training_dataloaders(data: pd.DataFrame, splitting_params: Dict[str, Any],
-                                batching_params: Dict[str, Any]):
+def create_training_dataloaders(data: pd.DataFrame, splitting_params_fn: str,
+                                batching_params_fn: str):
     """
     Creates train/val/test dataloaders for Pytorch model training and evaluation.
     :param data: dataframe with generated features
-    :param splitting_params: kwargs for splitting function
-    :param batching_params: kwargs for Prototypical Network batching
+    :param splitting_params: file with kwargs for splitting function
+    :param batching_params_fn: file with kwargs for Prototypical Network batching
     :return: dict of dataloaders (and label encoder)
     """
+    splitting_params = dict(read_json(splitting_params_fn)).get("splitting_params", {})
+    batching_params = dict(read_json(batching_params_fn)).get("batching_options", {})
 
     if splitting_params.get('encode_target', False):
         splits, encoder = create_splits(data, **splitting_params)

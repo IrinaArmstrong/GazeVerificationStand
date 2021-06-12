@@ -1,1 +1,15 @@
-{"max_seq_length":  120, "padding_symbol":  0.0}
+{
+  "preprocessing_params": {
+    "max_seq_length":  120,
+    "padding_symbol":  0.0
+  },
+  "splitting_params": {
+    "session_id_col": "unique_session_id",
+    "data_col": "data_scaled",
+    "target_col": "user_id",
+    "encode_target": false,
+    "val_split_ratio": 0.2,
+    "estim_quality": false,
+    "n_users_test": 2
+  }
+}

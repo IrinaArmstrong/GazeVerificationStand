@@ -1,4 +1,6 @@
 import os
+import sys
+sys.path.insert(0, "..")
 import torch
 import numpy as np
 from datetime import datetime
@@ -13,7 +15,7 @@ class EarlyStopping:
     """
 
     def __init__(self, patience: int, verbose=False, delta=0,
-                 path='../models_checkpoints/checkpoint.pt', trace_func=logger.info):
+                 path='models_checkpoints', trace_func=logger.info):
         """
         :param patience: How long to wait after last time validation loss improved.
         :param verbose: If True, logs a message for each validation loss improvement.
@@ -57,5 +59,5 @@ class EarlyStopping:
             self._trace_func \
                 (f'Validation loss decreased ({self._val_loss_min:.6f} --> {val_loss:.6f}). Saving model ...')
         torch.save(model.state_dict(), os.path.join(self._path,
-                                                    f"checkpoint_{datetime.now().strftime('%Y.%m.%d-%H:%M:%S')}"))
+                                                    f"checkpoint_{datetime.now().strftime('%Y.%m.%d-%H:%M:%S')}.pt"))
         self._val_loss_min = val_loss

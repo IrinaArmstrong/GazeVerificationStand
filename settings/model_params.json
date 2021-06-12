@@ -24,6 +24,8 @@
       "lr_scheduler_gamma":  0.1,
       "tensorboard_log_dir": "tblogs",
       "to_unsqueeze": false,
-      "output_dir": "output"
+      "output_dir": "output",
+      "model_name": "prototypical_test_model",
+      "checkpoints_dir": "models_checkpoints"
     }
 }

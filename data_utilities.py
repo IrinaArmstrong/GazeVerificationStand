@@ -217,7 +217,7 @@ def preprocess_data(data: pd.DataFrame, is_train: bool,
     :return: dataframe with processed samples.
     """
     meta_columns = ['user_id', 'session_id', 'stimulus_type', 'move_id', 'sp_id']
-    params = dict(read_json(params_path))
+    params = dict(read_json(params_path)).get("preprocessing_params", {})
 
     # If stimulus name contains '_' change it to '-'
     data.stimulus_type = data.stimulus_type.str.replace('_', '-', regex=True)

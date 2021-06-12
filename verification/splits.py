@@ -38,8 +38,8 @@ def train_val_split(df: pd.DataFrame, session_id_col: str,
     train_sess_ids, val_sess_ids = train_test_split(df[session_id_col].unique(),
                                                     test_size=val_ratio, random_state=11,
                                                     stratify=df.groupby(by=session_id_col)[target_col].apply(lambda x:
-                                                                                                              x.unique()[
-                                                                                                                  0]).values)
+                                                                                                             x.unique()[
+                                                                                                                 0]).values)
     train_df = df.loc[df[session_id_col].isin(train_sess_ids)]
     val_df = df.loc[df[session_id_col].isin(val_sess_ids)]
     logger.info(f"Train dataset of {train_df[target_col].nunique()} users with shape: {train_df.shape}")
@@ -66,7 +66,8 @@ def create_splits(data: pd.DataFrame, session_id_col: str,
         data, test_data = train_test_split_by_user(data, target_col=target_col, n_users_test=n_users_test)
         splits['test'] = (test_data[data_col], test_data[target_col])
 
-    train_data, val_data = train_val_split(data, session_id_col=session_id_col, val_ratio=val_split_ratio)
+    train_data, val_data = train_val_split(data, session_id_col=session_id_col, target_col=target_col,
+                                           val_ratio=val_split_ratio)
     splits['train'] = (train_data[data_col], train_data[target_col])
     splits['val'] = (val_data[data_col], val_data[target_col])
     if encode_target:

@@ -1,4 +1,5 @@
 # Basic
+import os
 import sys
 sys.path.insert(0, "..")
 import numpy as np
@@ -15,7 +16,8 @@ from verification.loss import PrototypicalLoss
 from visualization import visualize_training_process
 from verification.train_metrics import LossCallback, TensorboardCallback
 from verification.train_utils import (seed_everything, clear_logs_dir,
-                                      copy_data_to_device, save_losses_to_file)
+                                      copy_data_to_device, save_losses_to_file,
+                                      save_model)
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -79,7 +81,8 @@ class Trainer:
 
         # initialize the early_stopping object
         early_stopping = EarlyStopping(patience=self._parameters.get("training_options", {}).get("es_patience", 0),
-                                       verbose=True)
+                                       verbose=True,
+                                       path=self._parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"))
 
         for epoch in range(self._parameters.get("training_options", {}).get("start_epoch", 0),
                            self._parameters.get("training_options", {}).get("n_epochs", 0)):
@@ -109,7 +112,7 @@ class Trainer:
                                                                                      val_loss)
             for metric in self._metrics:
                 message += '\t{}: {}'.format(metric.name(), metric.value())
-            print(message)
+            logger.info(message)
 
             self.__scheduler.step(val_loss)
 
@@ -117,10 +120,27 @@ class Trainer:
                 logger.info(f"Early stopping at {epoch} epoch.")
                 break
 
+        # Saving final version
+        save_model(self._model,
+                   dir=self._parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"),
+                   filename=self._parameters.get("training_options",
+                                                            {}).get("model_name", "model") + "_last_epoch.pt")
+
         # Get loss history from LossCallback. Always first.
         save_losses_to_file(self._metrics[0].train_losses, self._metrics[0].train_losses,
-                            save_path=self._parameters.get("training_options", {}).get("output_dir", "."))
-        visualize_training_process()
+                            save_path=self._parameters.get("training_options", {}).get("output_dir", "."),
+                            model_name=self._parameters.get("training_options",
+                                                            {}).get("model_name", "model"))
+        # Save and show training history
+        try:
+            visualize_training_process(loss_fn=os.path.join(self._parameters.get("training_options",
+                                                                                 {}).get("output_dir", "."),
+                                                            self._parameters.get(
+                                                                "training_options", {}).get("model_name", "model")
+                                                            + "_losses.csv"))
+        except FileNotFoundError:
+            logger.error(f"Losses file not found for visualization.")
+
         return self._model
 
 

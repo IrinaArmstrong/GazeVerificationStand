@@ -9,9 +9,11 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 from datetime import timedelta
+from prettytable import PrettyTable
 from typing import (List, NoReturn, Tuple, Union, Dict, Any)
 from sklearn.metrics import (balanced_accuracy_score, accuracy_score,
-                             classification_report)
+                             classification_report, f1_score,
+                             recall_score, precision_score)
 
 sys.path.insert(0, "..")
 import warnings
@@ -20,10 +22,92 @@ warnings.filterwarnings('ignore')
 import logging_handler
 logger = logging_handler.get_logger(__name__)
 
-def evaluate(model: torch.nn.Module, dataloader,
-             estim_quality: bool, threshold: float,
-             print_metrics: bool=True, binarize: bool=True) -> List[int]:
+
+def evaluate_prototype_identification(model: torch.nn.Module, dataloader,
+                                      estim_quality: bool, return_dists: bool,
+                                      device: Union[str, torch.device],
+                                      return_embeddings: bool = False,
+                                      to_print: bool = True) -> Dict[str, List[int]]:
     """
+    Identification setting on prototypes with model.
+    :param model: model instance to run;
+    :param dataloader: DataLoader instance;
+    :param estim_quality: to estimate quality of predictions;
+    :param device: an object representing the device type and number;
+    :return: predictions for given dataset.
+    """
+    eval_start = time.time()
+    model.eval()
+
+    # To store predictions, true labels and so on
+    pred_labels = []
+    pred_dists = []
+    embeddings = []
+
+    if estim_quality:
+        true_labels = []
+
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(dataloader):
+            if estim_quality:
+                data = batch[:-1]
+                target = batch[-1]
+            else:
+                data = batch
+                target = None
+
+            if not type(data) in (tuple, list):
+                data = (data,)
+
+            data = copy_data_to_device(data, device)
+            outputs = model(*data, return_dists=return_dists)
+            if return_dists and return_embeddings:
+                batch_pred = outputs[0]
+                dists = outputs[1].cpu().detach().numpy()
+                embs = outputs[2].cpu().detach().numpy()
+                pred_dists.extend(dists)
+                embeddings.extend(embs)
+            elif return_dists:
+                batch_pred = outputs[0]
+                dists = outputs[1].cpu().detach().numpy()
+                pred_dists.extend(dists)
+            elif return_embeddings:
+                batch_pred = outputs[0]
+                embs = outputs[2].cpu().detach().numpy()
+                embeddings.extend(embs)
+            else:
+                outputs = outputs.cpu().detach().numpy()
+                batch_pred = outputs
+
+            # Store labels
+            if estim_quality:
+                true_labels.extend(target.tolist())
+
+            # Store predictions
+            pred_labels.extend(batch_pred)
+
+    # Measure how long the validation run took.
+    validation_time = format_time(time.time() - eval_start)
+
+    if estim_quality and to_print:
+        compute_metrics_short(true_labels, pred_labels)
+
+    logger.info("\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
+    outputs = {"predictions": [pred.item() for pred in pred_labels]}
+    if estim_quality:
+        outputs["targets"] = true_labels
+    if return_dists:
+        outputs['distances'] = pred_dists
+    if return_embeddings:
+        outputs['embeddings'] = embeddings
+    return outputs
+
+
+def evaluate_verification(model: torch.nn.Module, dataloader,
+                          estim_quality: bool, threshold: float,
+                          print_metrics: bool=True, binarize: bool=True) -> List[int]:
+    """
+    todo: rewrite it! (with device and without sigmoids)
     Making predictions with model.
     :param model: model instance to run;
     :param dataloader: DataLoader instance;
@@ -69,20 +153,9 @@ def evaluate(model: torch.nn.Module, dataloader,
     if estim_quality and print_metrics:
         compute_metrics(true_labels, pred_labels)
 
-    print("\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
+    logger.info("\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
     return pred_labels
 
-
-def init_model(model: nn.Module, parameters: Dict[str, Any],
-               dir: str='models_checkpoints',
-               filename: str='model.pt') -> nn.Module:
-    """
-    Initialize model and load state dict.
-    """
-    model = model(**parameters.get("model_params"))
-    _ = load_model(model, dir=dir,  filename=filename)
-    print(model)
-    return model
 
 
 def aggregate_SP_predictions(predictions: List[float],
@@ -108,6 +181,7 @@ def aggregate_SP_predictions(predictions: List[float],
     else:
         print("Specify correct predictions aggregation policy and try again.")
         return (0, 0.0)
+
 
 def create_embeddings(model: torch.nn.Module, dataloader,
                       estim_quality: bool) -> Union[List[np.ndarray], Tuple[List[np.ndarray], List[int]]]:
@@ -148,13 +222,12 @@ def create_embeddings(model: torch.nn.Module, dataloader,
     # Measure how long the validation run took.
     validation_time = format_time(time.time() - eval_start)
 
-    print("\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
+    logger.info("\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
     if estim_quality:
         return (embeddings, true_labels)
     else:
         return embeddings
 
-#---------------------------- UTILITIES ----------------------------
 
 def seed_everything(seed_value: int) -> NoReturn:
     random.seed(seed_value)  # Python
@@ -192,7 +265,20 @@ def format_time(elapsed):
     return str(timedelta(seconds=elapsed_rounded))
 
 
-def save_model(model, dir: str='models_checkpoints', filename: str='model.pt'):
+def init_model(model: nn.Module, parameters: Dict[str, Any],
+               dir: str='models_checkpoints',
+               filename: str='model.pt') -> nn.Module:
+    """
+    Initialize model and load state dict.
+    """
+    model = model(**parameters.get("model_params"))
+    _ = load_model(model, dir=dir,  filename=filename)
+    logger.info(model)
+    return model
+
+
+def save_model(model: nn.Module, dir: str='models_checkpoints',
+               filename: str='model.pt'):
     """
     Trained model, configuration and tokenizer,
     they can then be reloaded using `from_pretrained()` if using default names.
@@ -201,7 +287,7 @@ def save_model(model, dir: str='models_checkpoints', filename: str='model.pt'):
     model_to_save = model.module if hasattr(model, 'module') else model.state_dict()
     torch.save(model_to_save, os.path.join(dir, filename))
     # models_checkpoints
-    print("Model successfully saved.")
+    logger.info("Model successfully saved.")
 
 
 def load_model(model, dir: str, filename: str):
@@ -215,7 +301,6 @@ def load_model(model, dir: str, filename: str):
     return model.load_state_dict(torch.load(os.path.join(dir, filename)))
 
 
-
 def compute_metrics(true_labels: List[int],
                     pred_labels: List[int]) -> NoReturn:
 
@@ -223,9 +308,49 @@ def compute_metrics(true_labels: List[int],
     ac = accuracy_score(true_labels, pred_labels)
     bac = balanced_accuracy_score(true_labels, pred_labels)
 
-    print('Accuracy score:', ac)
-    print('Balanced_accuracy_score:', bac)
-    print(classification_report(true_labels, pred_labels))
+    logger.info('Accuracy score:', ac)
+    logger.info('Balanced_accuracy_score:', bac)
+    logger.info(classification_report(true_labels, pred_labels))
+
+
+def compute_metrics_short(true_labels: List[int],
+                          pred_labels: List[int]) -> NoReturn:
+    assert (len(true_labels) == len(pred_labels),
+            "Labels lists must have the same length.")
+
+    logger.info("***** Eval results *****")
+
+    ac = accuracy_score(true_labels, pred_labels)
+    bac = balanced_accuracy_score(true_labels, pred_labels)
+
+    x = PrettyTable()
+    x.field_names = ["Metric", "Macro", "Micro", "Weighted"]
+
+    precision_macro = precision_score(true_labels, pred_labels, average='macro')
+    precision_micro = precision_score(true_labels, pred_labels, average='micro')
+    precision_weighted = precision_score(true_labels, pred_labels, average='weighted')
+
+    recall_macro = recall_score(true_labels, pred_labels, average='macro')
+    recall_micro = recall_score(true_labels, pred_labels, average='micro')
+    recall_weighted = recall_score(true_labels, pred_labels, average='weighted')
+
+    f1_macro = f1_score(true_labels, pred_labels, average='macro')
+    f1_micro = f1_score(true_labels, pred_labels, average='micro')
+    f1_weighted = f1_score(true_labels, pred_labels, average='weighted')
+
+    logger.info('Accuracy score:', '{:.3f}'.format(ac))
+    logger.info(f"Balanced_accuracy_score: {'{:.3f}'.format(bac)}\n")
+
+    x.add_row(["Precision", '{:.3f}'.format(precision_macro),
+               '{:.3f}'.format(precision_micro),
+               '{:.3f}'.format(precision_weighted)])
+    x.add_row(["Recall", '{:.3f}'.format(recall_macro),
+               '{:.3f}'.format(recall_micro),
+               '{:.3f}'.format(recall_weighted)])
+    x.add_row(["F1-Score", '{:.3f}'.format(f1_macro),
+               '{:.3f}'.format(f1_micro),
+               '{:.3f}'.format(f1_weighted)])
+    logger.info(x)
 
 
 def clear_logs_dir(dir: str, ignore_errors: bool=True):
@@ -250,4 +375,4 @@ def save_losses_to_file(train_losses: Dict[int, List[float]],
     df = pd.DataFrame({"Epoch": list(trains.keys()),
                        "Train Losses": list(trains.values()),
                        "Val Losses": list(vals.values()),})
-    df.to_csv(os.path.join(save_path, model_name), sep=';')
+    df.to_csv(os.path.join(save_path, model_name + "_losses.csv"), sep=';')
