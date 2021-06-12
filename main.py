@@ -15,6 +15,7 @@ from verification.train_utils import init_model, evaluate_verification
 from visualization import visualize_quality
 
 import logging_handler
+logger = logging_handler.get_logger(__name__)
 
 
 class VerificationStand:

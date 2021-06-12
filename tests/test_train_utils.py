@@ -1,16 +1,18 @@
 import os
 import sys
-import random
 import unittest
 import numpy as np
 import pandas as pd
 sys.path.insert(0, '..')
 
-from datasets import TrainDataset
+from helpers import read_json
 from config import config, init_config
 from verification.train_dataloaders import create_training_dataloaders
+from verification.model import EmbeddingNet
+from verification.train_utils import save_model, init_model, clear_logs_dir
 
-
+import logging_handler
+logger = logging_handler.get_logger(__name__)
 
 class TestTraining(unittest.TestCase):
 
@@ -34,6 +36,37 @@ class TestTraining(unittest.TestCase):
         self.assertEqual(2, len(dataloaders))
         self.assertIn("train", list(dataloaders.keys()))
         self.assertIn("val", list(dataloaders.keys()))
+
+    def test_save_load_model(self):
+        parameters = dict(read_json(config.get("GazeVerification", "model_params")))
+        model = EmbeddingNet(**parameters.get("model_params"))
+        # Saving final version
+        save_model(model,
+                   dir=parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"),
+                   filename=parameters.get("training_options",
+                                           {}).get("model_name", "model") + "_test.pt")
+        fname = os.path.join(sys.path[0],
+                             parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"),
+                             parameters.get("training_options",
+                                            {}).get("model_name", "model") + "_test.pt")
+        self.assertTrue(os.path.isfile(fname))
+        loaded_model = init_model(EmbeddingNet, parameters=parameters,
+                                  dir=parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"),
+                                  filename=parameters.get("training_options",
+                                                          {}).get("model_name", "model") + "_test.pt")
+        logger.info(loaded_model)
+
+    def test_clear_logs_dir(self):
+        parameters = dict(read_json(config.get("GazeVerification", "model_params")))
+        open(os.path.join(sys.path[0], parameters.get("training_options",
+                                                      {}).get("tensorboard_log_dir", "tblogs"), "newfile.txt"), 'a').close()
+        clear_logs_dir(parameters.get("training_options",
+                                      {}).get("tensorboard_log_dir", "tblogs"), ignore_errors=False)
+        self.assertTrue(os.path.exists(os.path.join(sys.path[0], parameters.get("training_options",
+                                                      {}).get("tensorboard_log_dir", "tblogs"))))
+        existing_files = len(os.listdir(os.path.join(sys.path[0], parameters.get("training_options",
+                                                                                 {}).get("tensorboard_log_dir", "tblogs"))))
+        self.assertEqual(0, existing_files)
 
 
 if __name__ == '__main__':

@@ -285,7 +285,7 @@ def save_model(model: nn.Module, dir: str='models_checkpoints',
     """
     # Take care of distributed/parallel training
     model_to_save = model.module if hasattr(model, 'module') else model.state_dict()
-    torch.save(model_to_save, os.path.join(dir, filename))
+    torch.save(model_to_save, os.path.join(sys.path[0], dir, filename))
     # models_checkpoints
     logger.info("Model successfully saved.")
 
@@ -298,7 +298,7 @@ def load_model(model, dir: str, filename: str):
     :param filename: state_dict filename
     :return: initialized model
     """
-    return model.load_state_dict(torch.load(os.path.join(dir, filename)))
+    return model.load_state_dict(torch.load(os.path.join(sys.path[0], dir, filename)))
 
 
 def compute_metrics(true_labels: List[int],
@@ -357,10 +357,10 @@ def clear_logs_dir(dir: str, ignore_errors: bool=True):
     """
     Reset logging directory with deleting all files inside.
     """
-    files = len(os.listdir(dir))
-    shutil.rmtree(dir, ignore_errors=ignore_errors)
-    os.mkdir(dir)
-    logger.info(f"Folder {dir} cleared, deleted {files} files.")
+    files = len(os.listdir(os.path.join(sys.path[0], dir)))
+    shutil.rmtree(os.path.join(sys.path[0], dir), ignore_errors=ignore_errors)
+    os.mkdir(os.path.join(sys.path[0], dir))
+    logger.info(f"Folder {os.path.join(sys.path[0], dir)} cleared, deleted {files} files.")
 
 
 def save_losses_to_file(train_losses: Dict[int, List[float]],

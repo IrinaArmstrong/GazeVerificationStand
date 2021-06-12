@@ -7,7 +7,7 @@ def get_file_handler():
     Write log to file.
     """
     file_handler = logging.FileHandler("log_report.log")
-    file_handler.setLevel(logging.WARNING)
+    file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(logging.Formatter(_log_format))
     return file_handler
 
