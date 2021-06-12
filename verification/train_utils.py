@@ -4,6 +4,7 @@ import sys
 import random
 import time
 import torch
+import shutil
 import torch.nn as nn
 import numpy as np
 import pandas as pd
@@ -11,16 +12,14 @@ from datetime import datetime, timedelta
 from typing import (List, NoReturn, Tuple, Union)
 from sklearn.metrics import (balanced_accuracy_score, accuracy_score,
                              classification_report, confusion_matrix)
-import matplotlib.pyplot as plt
 
-from config import config
-from helpers import read_json
-from verification.model import Siamese
-from verification.train_metrics import AccumulatedAccuracyMetric, LossCallback
 
 sys.path.insert(0, "..")
 import warnings
 warnings.filterwarnings('ignore')
+
+import logging_handler
+logger = logging_handler.get_logger(__name__)
 
 
 
@@ -413,7 +412,7 @@ def load_model(model, dir: str, filename: str):
     """
     Loads a model’s parameter dictionary using a deserialized state_dict.
     :param model: model instance (uninitialized)
-    :param dir: folder/path
+    :param dir: folder/_path
     :param filename: state_dict filename
     :return: initialized model
     """
@@ -423,11 +422,21 @@ def load_model(model, dir: str, filename: str):
 
 def compute_metrics(true_labels: List[int],
                     pred_labels: List[int]) -> NoReturn:
-    print("***** Eval results {} *****")
 
+    print("***** Eval results *****")
     ac = accuracy_score(true_labels, pred_labels)
     bac = balanced_accuracy_score(true_labels, pred_labels)
 
     print('Accuracy score:', ac)
     print('Balanced_accuracy_score:', bac)
     print(classification_report(true_labels, pred_labels))
+
+
+def clear_logs_dir(dir: str, ignore_errors: bool=True):
+    """
+    Reset logging directory with deleting all files inside.
+    """
+    files = len(os.listdir(dir))
+    shutil.rmtree(dir, ignore_errors=ignore_errors)
+    os.mkdir(dir)
+    logger.info(f"Folder {dir} cleared, deleted {files} files.")
