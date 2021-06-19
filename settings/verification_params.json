@@ -2,10 +2,7 @@
   "model_name": "prototypical_test_model.pt",
   "pretrained_model_location": "models_checkpoints",
   "run_mode_params": {
-    "moves_threshold": 0.55,
-    "session_threshold": 0.3,
-    "estimate_quality": 1,
-    "policy": "quantile_0.7"
+    "moves_threshold": 0.55
   },
   "identification_setting": {
     "device": "cpu",
@@ -16,5 +13,10 @@
   },
   "verification_setting": {
 
+  },
+  "aggregation_params": {
+    "predef_session_threshold": 0.3,
+    "estimate_quality": 1,
+    "policy": "quantile_0.7"
   }
 }
