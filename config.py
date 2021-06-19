@@ -47,10 +47,6 @@ def create_config(fn: str) -> NoReturn:
     config.add_section("GazeVerification")
     config.set("GazeVerification", "model_params",
                "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\settings\\model_params.json")
-    config.set("GazeVerification", "pretrained_model_location",
-               "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\models_checkpoints")
-    config.set("GazeVerification", "pretrained_model_fn",
-               "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\models_checkpoints\\model_test2.pt")
     config.set("GazeVerification", "verification_params",
                "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\settings\\verification_params.json")
 

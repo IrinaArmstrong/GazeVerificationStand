@@ -1,3 +1,20 @@
 {
-  "moves_threshold": 0.55, "session_threshold": 0.3, "estimate_quality": 1, "policy": "quantile_0.7"
+  "model_name": "prototypical_test_model.pt",
+  "pretrained_model_location": "models_checkpoints",
+  "run_mode_params": {
+    "moves_threshold": 0.55,
+    "session_threshold": 0.3,
+    "estimate_quality": 1,
+    "policy": "quantile_0.7"
+  },
+  "identification_setting": {
+    "device": "cpu",
+    "num_users_per_it": 25,
+    "support_samples_per_user": 10,
+    "query_samples_per_user": 20,
+    "estimate_quality": 1
+  },
+  "verification_setting": {
+
+  }
 }
