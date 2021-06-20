@@ -23,86 +23,6 @@ import logging_handler
 logger = logging_handler.get_logger(__name__)
 
 
-def evaluate_prototype_identification(model: torch.nn.Module, dataloader,
-                                      estim_quality: bool, return_dists: bool,
-                                      device: Union[str, torch.device],
-                                      return_embeddings: bool = False,
-                                      to_print: bool = True) -> Dict[str, List[int]]:
-    """
-    Identification setting on prototypes with model.
-    :param model: model instance to run;
-    :param dataloader: DataLoader instance;
-    :param estim_quality: to estimate quality of predictions;
-    :param device: an object representing the device type and number;
-    :return: predictions for given dataset.
-    """
-    eval_start = time.time()
-    model.eval()
-
-    # To store predictions, true labels and so on
-    pred_labels = []
-    pred_dists = []
-    embeddings = []
-
-    if estim_quality:
-        true_labels = []
-
-    with torch.no_grad():
-        for batch_idx, batch in enumerate(dataloader):
-            if estim_quality:
-                data = batch[:-1]
-                target = batch[-1]
-            else:
-                data = batch
-                target = None
-
-            if not type(data) in (tuple, list):
-                data = (data,)
-
-            data = copy_data_to_device(data, device)
-            outputs = model(*data, return_dists=return_dists)
-            if return_dists and return_embeddings:
-                batch_pred = outputs[0]
-                dists = outputs[1].cpu().detach().numpy()
-                embs = outputs[2].cpu().detach().numpy()
-                pred_dists.extend(dists)
-                embeddings.extend(embs)
-            elif return_dists:
-                batch_pred = outputs[0]
-                dists = outputs[1].cpu().detach().numpy()
-                pred_dists.extend(dists)
-            elif return_embeddings:
-                batch_pred = outputs[0]
-                embs = outputs[2].cpu().detach().numpy()
-                embeddings.extend(embs)
-            else:
-                outputs = outputs.cpu().detach().numpy()
-                batch_pred = outputs
-
-            # Store labels
-            if estim_quality:
-                true_labels.extend(target.tolist())
-
-            # Store predictions
-            pred_labels.extend(batch_pred)
-
-    # Measure how long the validation run took.
-    validation_time = format_time(time.time() - eval_start)
-
-    if estim_quality and to_print:
-        compute_metrics_short(true_labels, pred_labels)
-
-    logger.info("\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
-    outputs = {"predictions": [pred.item() for pred in pred_labels]}
-    if estim_quality:
-        outputs["targets"] = true_labels
-    if return_dists:
-        outputs['distances'] = pred_dists
-    if return_embeddings:
-        outputs['embeddings'] = embeddings
-    return outputs
-
-
 def evaluate_verification(model: torch.nn.Module, dataloader,
                           estim_quality: bool, threshold: float,
                           print_metrics: bool=True, binarize: bool=True) -> List[int]:
@@ -254,15 +174,13 @@ def copy_data_to_device(data, device):
     raise ValueError('Invalid data type {}'.format(type(data)))
 
 
-def format_time(elapsed):
+def format_time(elapsed: timedelta):
     """
     Service function. Pre-process timestamps during training.
     :param elapsed: time in seconds;
     :return: string with format: hh:mm:ss
     """
-    # Round to the nearest second.
-    elapsed_rounded = int(round((elapsed)))
-    return str(timedelta(seconds=elapsed_rounded))
+    return str(elapsed)
 
 
 def init_model(model: nn.Module, parameters: Dict[str, Any],

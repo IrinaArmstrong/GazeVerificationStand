@@ -1,9 +1,11 @@
 # Basic
 import os
 import sys
+import random
 sys.path.insert(0, "..")
 import numpy as np
 import pandas as pd
+from datetime import datetime
 from typing import Tuple, List, Dict, Any
 
 import torch
@@ -12,7 +14,9 @@ import torch.nn as nn
 from config import config
 from helpers import read_json
 from verification.model import EmbeddingNet, PrototypeNet
-from verification.train_utils import (seed_everything, copy_data_to_device, init_model)
+from verification.train_utils import (seed_everything, copy_data_to_device, init_model,
+                                      compute_metrics_short, format_time)
+from verification.run_dataloaders import create_embeddings_dataloader
 import logging_handler
 logger = logging_handler.get_logger(__name__)
 
@@ -33,6 +37,8 @@ class PrototypicalEvaluator:
                                                                    {}).get("support_samples_per_user", 1)
         self._query_samples_per_user = self._eval_parameters.get("identification_setting",
                                                                  {}).get("query_samples_per_user", 1)
+        self._estimate_quality = bool(self._eval_parameters.get("identification_setting",
+                                                                 {}).get("", False))
 
 
     def __init_prototypical_model(self, embedding_model: nn.Module, to_load: bool):
@@ -55,7 +61,7 @@ class PrototypicalEvaluator:
                 embedding_model = init_model(EmbeddingNet, parameters=self._model_parameters,
                                           dir=self._eval_parameters.get("pretrained_model_location", "."),
                                           filename=self._eval_parameters.get("model_name", "model.pt"))
-        self._protypical_model = PrototypeNet(embedding_model)
+        self._protypical_model = PrototypeNet(embedding_model).eval()
         logger.info(f"Prototypical model created.")
 
     def _select_threshold_sp(self):
@@ -88,7 +94,8 @@ class PrototypicalEvaluator:
 
 
     def _split_support_query(self, df: pd.DataFrame,
-                        users: List[int] = None) -> Tuple[Tuple[np.ndarray, np.ndarray], pd.DataFrame]:
+                        users: List[int] = None) -> Tuple[Tuple[np.ndarray, np.ndarray],
+                                                          Tuple[np.ndarray, np.ndarray]]:
         """
         Split data to support and query samples for each user.
         For support form 3d matrix: [users*support_samples_per_user, n_channels, n_features] and target vector.
@@ -119,7 +126,15 @@ class PrototypicalEvaluator:
         support_data = np.vstack(support_data).reshape(len(users) * self._support_samples_per_user, 2, -1, order='F')
         support_targets = np.array(support_targets)
 
-        return (support_data, support_targets), pd.concat(query_dfs)
+        query_dfs = pd.concat(query_dfs)
+        query_data = np.vstack(query_dfs['data_scaled'].values).reshape(query_dfs.shape[0], 2, -1, order='F')
+        query_targets = np.vstack(query_dfs['user_id'].values)
+        # Todo: to return and save some identifier for each SP
+        # query_sp_ids = np.vstack(query_dfs['splitted_sp_id'].values)
+        del query_dfs
+
+        return (support_data, support_targets), (query_data, query_targets)
+
 
     def evaluate(self, mode: str, kwargs: Dict[str, Any]):
         assert (mode in self.__modes), f"Mode should be one of available: {self.__modes}."
@@ -134,8 +149,41 @@ class PrototypicalEvaluator:
             self.__run_verification(**kwargs)
 
 
-    def __eval_identification(self, data: pd.DataFrame):
-        pass
+    def __eval_identification(self, data: pd.DataFrame, users: List[int]=None, save_results: bool=True):
+        if not users:
+            if data['user_id'].nunique() < 2:
+                logger.error(f"In identification mode in data should be more then 1 user.",
+                             f"{data['user_id'].nunique()} is found.")
+                raise AttributeError(f"In identification mode in data should be more then 1 user.",
+                             f"{data['user_id'].nunique()} is found.")
+            if self._num_users_per_it == -1:  # Take all users to identification testing
+                users = data['user_id'].unique()
+            else:
+                users = set()
+                while len(users) < self._num_users_per_it:
+                    users.add(random.choice(data['user_id'].unique()))
+
+        split = self._split_support_query(data, list(users))
+        (support_data, support_targets), (queries_data, queries_targets) = split
+
+        # Init prototypes in model
+        self._protypical_model.init_prototypes(torch.FloatTensor(support_data),
+                                               torch.LongTensor(support_targets))
+        logger.info(f"Prototypes in model initialized for {self._protypical_model._prototypes.size(0)} classes ",
+                    f"and {self._protypical_model._prototypes.size(1)} shape each.")
+
+        # Create test dataloader with query data and targets
+        identification_dataloader = create_embeddings_dataloader(queries_data, queries_targets,
+                                                                 batch_size=bool(self._eval_parameters.get(
+                                                                     "identification_setting", {}).get(
+                                                                     "batch_size", 64)))
+        predictions = self.__evaluate_prototype_identification(identification_dataloader)
+        predictions = pd.DataFrame(predictions)
+        if save_results:
+            save_preds_fn = os.path.join(self._eval_parameters.get("output_dir", "."),
+                                         f"identification_predictions_{datetime.now().strftime('%Y-%m-%d_%H:%M%S')}.csv")
+            predictions.to_csv(save_preds_fn, sep=';', encoding="utf-8")
+            logger.info(f"Predictions saved to: {save_preds_fn}")
 
 
     def __eval_verification(self, data: pd.DataFrame):
@@ -148,4 +196,81 @@ class PrototypicalEvaluator:
 
     def __run_verification(self, data: pd.DataFrame):
         pass
+
+    def __evaluate_prototype_identification(self, dataloader) -> Dict[str, List[int]]:
+        """
+        Identification setting on prototypes with model.
+        :return: predictions for given dataset.
+        """
+        estim_quality = bool(self._eval_parameters.get("identification_setting",
+                                                                 {}).get("estimate_quality", False))
+        return_dists = bool(self._eval_parameters.get("identification_setting",
+                                                       {}).get("return_distances", False))
+        return_embeddings = bool(self._eval_parameters.get("identification_setting",
+                                                       {}).get("return_embeddings", False))
+
+        eval_start = datetime.now()
+        self._protypical_model.eval()
+
+        # To store predictions, true labels and so on
+        pred_labels = []
+        pred_dists = []
+        embeddings = []
+
+        if estim_quality:
+            true_labels = []
+
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(dataloader):
+                if estim_quality:
+                    data = batch[:-1]
+                    target = batch[-1]
+                else:
+                    data = batch
+                    target = None
+
+                if not type(data) in (tuple, list):
+                    data = (data,)
+
+                data = copy_data_to_device(data, self._device)
+                outputs = self._protypical_model(*data, return_dists=return_dists)
+                if return_dists and return_embeddings:
+                    batch_pred = outputs[0]
+                    dists = outputs[1].cpu().detach().numpy()
+                    embs = outputs[2].cpu().detach().numpy()
+                    pred_dists.extend(dists)
+                    embeddings.extend(embs)
+                elif return_dists:
+                    batch_pred = outputs[0]
+                    dists = outputs[1].cpu().detach().numpy()
+                    pred_dists.extend(dists)
+                elif return_embeddings:
+                    batch_pred = outputs[0]
+                    embs = outputs[2].cpu().detach().numpy()
+                    embeddings.extend(embs)
+                else:
+                    outputs = outputs.cpu().detach().numpy()
+                    batch_pred = outputs
+
+                # Store labels
+                if estim_quality:
+                    true_labels.extend(target.tolist())
+                # Store predictions
+                pred_labels.extend(batch_pred)
+
+        # Measure how long the validation run took.
+        validation_time = format_time(datetime.now() - eval_start)
+        if estim_quality:
+            compute_metrics_short(true_labels, pred_labels)
+
+        logger.info(
+            "\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
+        outputs = {"predictions": [pred.item() for pred in pred_labels]}
+        if estim_quality:
+            outputs["targets"] = true_labels
+        if return_dists:
+            outputs['distances'] = pred_dists
+        if return_embeddings:
+            outputs['embeddings'] = embeddings
+        return outputs
 

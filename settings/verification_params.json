@@ -1,6 +1,7 @@
 {
   "model_name": "prototypical_test_model.pt",
   "pretrained_model_location": "models_checkpoints",
+  "output_dir": "output",
   "run_mode_params": {
     "moves_threshold": 0.55
   },
@@ -9,10 +10,16 @@
     "num_users_per_it": 25,
     "support_samples_per_user": 10,
     "query_samples_per_user": 20,
-    "estimate_quality": 1
+    "batch_size": 64,
+    "estimate_quality": true,
+    "return_distances": true,
+    "return_embeddings": false
   },
   "verification_setting": {
-
+    "batch_size": 64,
+    "estimate_quality": true,
+    "return_distances": true,
+    "return_embeddings": false
   },
   "aggregation_params": {
     "predef_session_threshold": 0.3,

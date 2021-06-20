@@ -75,15 +75,13 @@ def wrap_dataset(data: np.ndarray, labels: np.ndarray) -> List[Example]:
             in tqdm(enumerate(zip(data, labels)))]
 
 
-def create_embeddings_dataloader(data: pd.DataFrame,
-                                 batch_size: int,
-                                 features_cols: List[str],
-                                 target_col: str):
+def create_embeddings_dataloader(data: np.ndarray, targets: np.ndarray,
+                                 batch_size: int):
     """
     Creates single dataloader for Pytorch model running.
     """
-    return DataLoader(TensorDataset(torch.from_numpy(data[features_cols].values.astype(np.float32)).float(),
-                            torch.from_numpy(data[target_col].values).float()), batch_size, num_workers=0)
+    return DataLoader(TensorDataset(torch.from_numpy(data.astype(np.float32)).float(),
+                            torch.from_numpy(targets).float()), batch_size, num_workers=0)
 
 
 def create_verification_dataloader(data_samples_1: pd.DataFrame,
