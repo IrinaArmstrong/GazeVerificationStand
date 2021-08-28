@@ -1,7 +1,8 @@
 # Basic
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
 from itertools import chain
-from abc import ABC, abstractmethod
 from typing import (List, Dict, Any, Tuple, TypeVar)
 
 import warnings
@@ -27,20 +28,6 @@ class GazeState:
         attr_name = [key for key, val in dict(GazeState.__dict__).items() if val == attr_num]
         return attr_name[0] if len(attr_name) > 0 else "unknown"
 
-
-class GazeAnalyzer(ABC):
-
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def classify_eyemovements(self, gaze: np.ndarray,
-                              timestamps: np.ndarray,
-                              velocity: np.ndarray,
-                              **kwargs) -> np.ndarray:
-        pass
-
-
 def get_movement_indexes(movements: np.ndarray,
                          movement_type: int) -> List[List[int]]:
     """
@@ -62,6 +49,26 @@ def get_movement_indexes(movements: np.ndarray,
     if len(list_i) > 0:
         indexes.append(list_i)
     return indexes
+
+
+def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
+    """
+    Select from given data only SP moves and forms dataset.
+    :param data: classified data
+    :return: dataframe with only SP moves.
+    """
+    sps = []
+    for df in tqdm(data):
+        moves_sp = get_movement_indexes(df['movements'], GazeState.sp)
+        if len(moves_sp) > 0:
+            for sp_ids in moves_sp:
+                sps.append(df.iloc[sp_ids])
+    for i, sp_df in enumerate(sps):
+        sp_df.loc[:, 'move_id'] = i
+
+    print(f"In classified sessions there are {len(sps)} with total length: {np.sum([len(s) for s in sps])} SP.")
+    sps = pd.concat(sps, ignore_index=True)
+    return sps
 
 
 def clean_short_movements(movements: np.ndarray,

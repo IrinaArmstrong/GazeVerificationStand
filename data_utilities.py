@@ -179,8 +179,9 @@ def interpolate_sessions(sessions: pd.DataFrame, x: str, y: str,
     del sess_df_filled
     return sessions
 
-def preprocess_data(data: pd.DataFrame, is_train: bool,
-                    params_path: str) -> pd.DataFrame:
+
+def restructure_gaze_data(data: pd.DataFrame, is_train: bool,
+                          params_path: str) -> pd.DataFrame:
     """
     Split, pad and truncate time series data.
     :param data: dataframe with samples

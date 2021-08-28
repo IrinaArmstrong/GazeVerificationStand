@@ -5,7 +5,7 @@ from typing import (NoReturn, Union, Dict, Any, Tuple, List)
 from helpers import read_json
 from config import init_config, config
 import create_training_dataset
-from data_utilities import preprocess_data, normalize_gaze
+from data_utilities import restructure_gaze_data, normalize_gaze
 from eyemovements.classification import run_eyemovements_classification
 from verification.dataloaders import (create_training_dataloaders, create_verification_dataloader,
                                       create_selfverify_dataloader)
@@ -48,7 +48,7 @@ class VerificationStand:
         data = run_eyemovements_classification(data, is_train=True, do_estimate_quality=True)
 
         # Pre-process and normalize gaze
-        data = preprocess_data(data, is_train=True, params_path=config.get('Preprocessing', 'processing_params'))
+        data = restructure_gaze_data(data, is_train=True, params_path=config.get('Preprocessing', 'processing_params'))
         data = normalize_gaze(data, to_restore=False, to_save=True,
                               checkpoint_dir=config.get('GazeVerification', 'pretrained_model_location'))
 

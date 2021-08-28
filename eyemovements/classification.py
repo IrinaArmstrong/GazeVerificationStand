@@ -10,7 +10,7 @@ from config import config
 from helpers import read_json
 from eyemovements.eyemovements_utils import get_movement_indexes, GazeState
 from eyemovements.filtering import sgolay_filter_dataset
-from eyemovements.eyemovements_algorithm import IVDT, classify_eyemovements_dataset
+from eyemovements.ivdt_algorithm import IVDT
 from eyemovements.eyemovements_metrics import estimate_quality
 from data_utilities import horizontal_align_data, groupby_session, interpolate_sessions
 
@@ -18,24 +18,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
-    """
-    Select from given data only SP moves and forms dataset.
-    :param data: classified data
-    :return: dataframe with only SP moves.
-    """
-    sps = []
-    for df in tqdm(data):
-        moves_sp = get_movement_indexes(df['movements'], GazeState.sp)
-        if len(moves_sp) > 0:
-            for sp_ids in moves_sp:
-                sps.append(df.iloc[sp_ids])
-    for i, sp_df in enumerate(sps):
-        sp_df.loc[:, 'move_id'] = i
 
-    print(f"In classified sessions there are {len(sps)} with total length: {np.sum([len(s) for s in sps])} SP.")
-    sps = pd.concat(sps, ignore_index=True)
-    return sps
 
 
 def classify_eyemovements_wrapper(data: pd.DataFrame) -> pd.DataFrame:

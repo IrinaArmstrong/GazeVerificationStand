@@ -13,11 +13,12 @@ from scipy.spatial.distance import euclidean
 from eyemovements.eyemovements_utils import (get_movement_indexes, GazeState,
                                  get_amplitude_and_angle, get_path_and_centroid)
 
-
+# todo: review this code!!!
 def estimate_quality(df: pd.DataFrame):
     movements = df.movements.values
     gaze_data = df[['gaze_X', 'gaze_Y']].values
     velocity = df['velocity_sqrt'].values
+
     # All stimulus movements - are smooth persuites
     stimulus_movements = np.full_like(df.movements.values, 3)
     stimulus_data = df[['stim_X', 'stim_Y']].values

@@ -66,9 +66,9 @@ class TestEyemovementsModule(unittest.TestCase):
                     dispersion_threshold=model_params.get('dispersion_threshold'))
 
         sess_num = 0
-        movements, stats = ivdt.classify_eyemovements(sess[sess_num][['filtered_X', 'filtered_Y']].values.reshape(-1, 2),
-                                                      sess[sess_num]['timestamps'].values,
-                                                      sess[sess_num]['velocity_sqrt'].values)
+        movements, stats = ivdt._classify_eyemovements(sess[sess_num][['filtered_X', 'filtered_Y']].values.reshape(-1, 2),
+                                                       sess[sess_num]['timestamps'].values,
+                                                       sess[sess_num]['velocity_sqrt'].values)
 
         sess[sess_num]["movements"] = movements
         sess[sess_num]["movements_type"] = [GazeState.decode(x) for x in sess[sess_num]["movements"]]
