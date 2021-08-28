@@ -10,7 +10,7 @@ from config import config
 from helpers import read_json
 from eyemovements.eyemovements_utils import get_movement_indexes, GazeState
 from eyemovements.filtering import sgolay_filter_dataset
-from eyemovements.eyemovements_classifier import IVDT, classify_eyemovements_dataset
+from eyemovements.eyemovements_algorithm import IVDT, classify_eyemovements_dataset
 from eyemovements.eyemovements_metrics import estimate_quality
 from data_utilities import horizontal_align_data, groupby_session, interpolate_sessions
 

@@ -17,11 +17,11 @@ class VerificationStand:
     def __init__(self, config_path: str):
         self._config_path = config_path
         init_config(config_path)
-        self._model= None
+        self._model = None
         self._trainer = Trainer()
 
 
-    def run(self, mode: str) -> Union[NoReturn, Dict[str, Any]]:
+    def run(self, mode: str) -> Union[None, Dict[str, Any]]:
         """
         Entry point for running model.
         :param mode: mode of run - 'train' or 'run'
