@@ -2,10 +2,13 @@
 import numpy as np
 from itertools import chain
 from abc import ABC, abstractmethod
-from typing import (List, Dict, Any, Tuple)
+from typing import (List, Dict, Any, Tuple, TypeVar)
 
 import warnings
 warnings.filterwarnings('ignore')
+
+GazeAnalyzerType = TypeVar("GazeAnalyzerType", bound='GazeAnalyzer')
+GazeStateType = TypeVar("GazeStateType", bound="GazeState")
 
 
 class GazeState:
@@ -23,7 +26,6 @@ class GazeState:
     def decode(cls, attr_num: int):
         attr_name = [key for key, val in dict(GazeState.__dict__).items() if val == attr_num]
         return attr_name[0] if len(attr_name) > 0 else "unknown"
-
 
 
 class GazeAnalyzer(ABC):
