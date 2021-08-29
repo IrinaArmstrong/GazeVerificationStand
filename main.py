@@ -10,7 +10,7 @@ from eyemovements.classification import run_eyemovements_classification
 from verification.dataloaders import (create_training_dataloaders, create_verification_dataloader,
                                       create_selfverify_dataloader)
 from verification.train_utils import (Trainer, init_model, evaluate, aggregate_SP_predictions)
-from visualization import visualize_quality
+from visualizations.visualization import visualize_quality
 
 class VerificationStand:
 

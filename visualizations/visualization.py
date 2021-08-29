@@ -1,7 +1,7 @@
 # Basic
 import os
 import sys
-sys.path.insert(0, "..")
+from pathlib import Path
 
 import umap
 import numpy as np
@@ -18,17 +18,30 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_curve, auc
 
 from helpers import read_json
+from config import config
+
+import logging_handler
+logger = logging_handler.get_logger(__name__)
 
 def visualize_eyemovements(data: pd.DataFrame, fn: str,
-                           x_col: str="x", y_col: str="y",
-                           time_col: str='timestamps',
-                           color: str="movement_name"):
+                           x_col: str = "x", y_col: str = "y",
+                           time_col: str = 'timestamps',
+                           color: str = "movement_name"):
     assert ((x_col in data.columns) and (y_col in data.columns)
             and (color in data.columns) and (time_col in data.columns))
 
-    color_mapping = dict(read_json(os.path.join(sys.path[0], "settings", "color_mappings.json")))
+    settings_dir = Path(config.get("Basic", "settings_dir"))
+    if ~settings_dir.exists():
+        logger.error(f"Settings dir do not exist by path: {settings_dir}")
+        raise FileNotFoundError
+
+    if ~(settings_dir / "color_mappings.json").exists() or ~(settings_dir / "eng_rus_names.json").exists():
+        logger.error(f"Settings files for visualizations do not exist by path: {settings_dir}")
+        raise FileNotFoundError
+
+    color_mapping = dict(read_json(str(settings_dir / "color_mappings.json")))
     data['color'] = data[color].apply(lambda x: color_mapping.get(x, "black"))
-    names_mapping = dict(read_json(os.path.join(sys.path[0], "settings", "eng_rus_names.json")))
+    names_mapping = dict(read_json(str(settings_dir / "eng_rus_names.json")))
     data['rus_movements'] = data[color].apply(lambda x: names_mapping.get(x, "black"))
 
     fig = make_subplots(

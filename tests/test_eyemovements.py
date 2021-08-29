@@ -13,7 +13,7 @@ from eyemovements.filtering import sgolay_filter_dataset
 from data_utilities import groupby_session, horizontal_align_data, interpolate_sessions
 from eyemovements.classification import (get_sp_moves_dataset, IVDT, GazeState)
 from eyemovements.eyemovements_metrics import estimate_quality
-from visualization import visualize_eyemovements
+from visualizations.visualization import visualize_eyemovements
 
 import warnings
 warnings.filterwarnings('ignore')
