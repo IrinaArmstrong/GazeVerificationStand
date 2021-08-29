@@ -133,7 +133,7 @@ class EyemovementsClassifier:
                                                                                                  axis=1)
         # todo: add visualization
         # todo: add updating params function
-        
+
         return data
 
 
