@@ -29,7 +29,8 @@ def create_config(fn: str) -> NoReturn:
 
     config.add_section("Basic")
     config.set("Basic", "root_dir", str(current_dir))
-    config.set("Basic", "settings_dir", (current_dir / "settings").__str__())
+    config.set("Basic", "settings_dir", str(current_dir / "settings"))
+    config.set("Basic", "output_dir", str(current_dir / "output"))
 
     config.add_section("DataPaths")
     config.set("DataPaths", "train_data",

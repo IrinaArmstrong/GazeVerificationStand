@@ -84,7 +84,11 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
 
-    plotly.offline.plot(fig, filename='../output/'+ fn + '.html')
+    if ~Path(config.get("Basic", "output_dir")).exists():
+        logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
+        Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
+
+    plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / (fn + '.html')))
 
 
 def visualize_quality(y_true, y_pred, y_pred_probas):
@@ -117,7 +121,12 @@ def _plot_roc_curve(y_true, y_pred_probas):
             b=100,
             t=100,
             pad=4))
-    plotly.offline.plot(fig, filename='./output/roc_curve.html')
+
+    if ~Path(config.get("Basic", "output_dir")).exists():
+        logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
+        Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
+
+    plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / 'roc_curve.html'))
 
 
 def _plot_confusion_matrix(y_true, y_pred):
@@ -166,11 +175,17 @@ def _plot_confusion_matrix(y_true, y_pred):
             b=100,
             t=100,
             pad=4))
-    plotly.offline.plot(fig, filename='./output/confusion_matrix.html')
+
+    if ~Path(config.get("Basic", "output_dir")).exists():
+        logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
+        Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
+
+    plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / 'confusion_matrix.html'))
 
 
 def reduce_dim_embeddings_UMAP(embeddings: np.ndarray,
                                n_neighbors: int=15, dim=2):
+    # todo: move to separate file
     umap_model = umap.UMAP(n_neighbors=n_neighbors,
                            min_dist=0., n_components=dim)
     return umap_model.fit_transform(embeddings)
@@ -188,4 +203,9 @@ def plot_embeddings_2D(embeddings: np.ndarray, targets: np.ndarray):
     fig.update_layout(legend_title_text='Принадлежность движений',
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
-    plotly.offline.plot(fig, filename='./output/embeddings.html')
+
+    if ~Path(config.get("Basic", "output_dir")).exists():
+        logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
+        Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
+
+    plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / 'embeddings.html'))
