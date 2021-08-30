@@ -1,4 +1,5 @@
 # Basic
+import datetime
 import os
 import sys
 from pathlib import Path
@@ -23,12 +24,15 @@ from config import config
 import logging_handler
 logger = logging_handler.get_logger(__name__)
 
-def visualize_eyemovements(data: pd.DataFrame, fn: str,
-                           x_col: str = "x", y_col: str = "y",
-                           time_col: str = 'timestamps',
-                           color: str = "movement_name"):
-    assert ((x_col in data.columns) and (y_col in data.columns)
-            and (color in data.columns) and (time_col in data.columns))
+def visualize_eyemovements(data: pd.DataFrame, to_save: bool=True):
+    """
+    Visualize in simple scatter plot eye movements classification results.
+    Input data - is a DataFrame with time, x, y and classification labels
+    """
+    if ~(("gaze_X" in data.columns) and ("gaze_Y" in data.columns)
+            and ("movements_type" in data.columns) and ("timestamps" in data.columns)):
+        logger.error(f"Some columns do not exists in given data: {data.columns}")
+        raise AttributeError
 
     settings_dir = Path(config.get("Basic", "settings_dir"))
     if ~settings_dir.exists():
@@ -40,9 +44,9 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
         raise FileNotFoundError
 
     color_mapping = dict(read_json(str(settings_dir / "color_mappings.json")))
-    data['color'] = data[color].apply(lambda x: color_mapping.get(x, "black"))
+    data['color'] = data["movements_type"].apply(lambda x: color_mapping.get(x, "black"))
     names_mapping = dict(read_json(str(settings_dir / "eng_rus_names.json")))
-    data['rus_movements'] = data[color].apply(lambda x: names_mapping.get(x, "black"))
+    data['rus_movements'] = data["movements_type"].apply(lambda x: names_mapping.get(x, "black"))
 
     fig = make_subplots(
         rows=2, cols=2,
@@ -54,24 +58,24 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
         subplot_titles=("Взгляд, координата Х", "Взгляд, координата Y", "Взгляд, координаты X-Y")
     )
 
-    min_ts = np.min(data[time_col])
+    min_ts = np.min(data["timestamps"])
     for movement_type, df in data.groupby(by='rus_movements'):
-        fig.add_trace(go.Scatter(x=df[time_col] - min_ts,
-                                 y=df[x_col],
+        fig.add_trace(go.Scatter(x=df["timestamps"] - min_ts,
+                                 y=df["gaze_X"],
                                  mode='markers',
                                  marker_color=df['color'],
                                  name=movement_type,
                                  showlegend=False), row=1, col=1)
 
-        fig.add_trace(go.Scatter(x=df[time_col] - min_ts,
-                                 y=df[y_col],
+        fig.add_trace(go.Scatter(x=df["timestamps"] - min_ts,
+                                 y=df["gaze_Y"],
                                  mode='markers',
                                  marker_color=df['color'],
                                  name=movement_type,
                                  showlegend=False), row=1, col=2)
 
-        fig.add_trace(go.Scatter(x=df[x_col],
-                                 y=df[y_col],
+        fig.add_trace(go.Scatter(x=df["gaze_X"],
+                                 y=df["gaze_Y"],
                                  mode='markers',
                                  marker_color=df['color'],
                                  name=movement_type), row=2, col=1)
@@ -84,11 +88,17 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
 
-    if ~Path(config.get("Basic", "output_dir")).exists():
-        logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
-        Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
+    if to_save:
+        if ~Path(config.get("Basic", "output_dir")).exists():
+            logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
+            Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
 
-    plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / (fn + '.html')))
+        fn = f"eyemovements_visualization_from_{datetime.datetime.now().strftime('%Y-%m-%d_%H:%M')}"
+        plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir"))
+                                              / (fn + '.html')))
+        logger.debug(f"Visualizations file successfully saved to: {fn}")
+    else:
+        fig.show()
 
 
 def visualize_quality(y_true, y_pred, y_pred_probas):

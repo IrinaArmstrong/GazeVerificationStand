@@ -1,7 +1,6 @@
 # Basic
-import numpy as np
+import traceback
 import pandas as pd
-from tqdm import tqdm
 from typing import (List, Dict, Any)
 from pathlib import Path
 
@@ -11,6 +10,7 @@ from eyemovements.ivdt_algorithm import IVDT
 from eyemovements.filtering import sgolay_filter_dataset
 from eyemovements.eyemovements_metrics import estimate_quality
 from eyemovements.eyemovements_utils import get_sp_moves_dataset
+from visualizations.visualization import visualize_eyemovements
 from data_utilities import (horizontal_align_data, groupby_session, interpolate_sessions)
 
 import logging_handler
@@ -35,7 +35,7 @@ class EyemovementsClassifier:
     """
 
     def __init__(self,  mode: str, algorithm: str='ivdt',
-                 config_path: str='set_locations.ini'):
+                 config_path: str='..\set_locations.ini'):
 
         if mode not in available_modes:
             logger.error(f"""Eye movements Classifier mode should be one from: {available_modes}.
@@ -131,9 +131,12 @@ class EyemovementsClassifier:
                                      grouping_cols=['user_id', 'session_id', 'stimulus_type', 'move_id'],
                                      aligning_cols=['x_diff', 'y_diff']).reset_index().rename({"index": "sp_id"},
                                                                                                  axis=1)
-        # todo: add visualization
-        # todo: add updating params function
-
+        if visualize:
+            try:
+                visualize_eyemovements(data, to_save=True)
+            except Exception as ex:
+                logger.error(f"""Error occurred while visualizing eye movements results:
+                             {traceback.print_tb(ex.__traceback__)}""")
         return data
 
 
@@ -143,4 +146,5 @@ class EyemovementsClassifier:
         :param updating_params:
         :return:
         """
+        # todo: implement
         pass
