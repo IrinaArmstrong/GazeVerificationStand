@@ -33,12 +33,9 @@ def create_config(fn: str) -> NoReturn:
     config.set("Basic", "output_dir", str(current_dir / "output"))
 
     config.add_section("DataPaths")
-    config.set("DataPaths", "train_data",
-               "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\data\\train")
-    config.set("DataPaths", "owner_data",
-               "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\data\\owner")
-    config.set("DataPaths", "run_data",
-               "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\data\\run")
+    config.set("DataPaths", "train_data", "C:\\Users\\airen\\DATA\\Eye Data\\Export_full\\train")
+    config.set("DataPaths", "owner_data", str(current_dir / "data" / "owner"))
+    config.set("DataPaths", "run_data", str(current_dir / "data" / "run"))
     config.set("DataPaths", "selected_columns", str(current_dir / 'settings' / 'selected_columns.csv'))
 
     config.add_section("EyemovementClassification")
