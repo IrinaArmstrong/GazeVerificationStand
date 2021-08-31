@@ -91,15 +91,26 @@ class TestEyemovementsModule(unittest.TestCase):
         """
         Test correctness of eye movements classifier exceptions raising.
         """
-        self.assertRaises(NotImplementedError, EyemovementsClassifier(mode='any', algorithm='ivdt'))
-        self.assertRaises(NotImplementedError, EyemovementsClassifier(mode='run', algorithm='ivvt'))
+        self.assertRaises(NotImplementedError, EyemovementsClassifier, {'mode': 'any', "algorithm": 'ivdt'})
+        self.assertRaises(NotImplementedError, EyemovementsClassifier, {"mode": 'run', "algorithm": 'ivvt'})
 
 
-    def test_full_pipeline(self):
+    def test_full_pipeline_no_options(self):
         """
         Test full pipeline of eye movements classification running without exceptions.
+        Here we do not test estimation & visualizations.
         """
         cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
+        cls.classify_eyemovements(self.train_dataset, sp_only=True, visualize=False, estimate=False)
+
+    def test_full_pipeline_visualize(self):
+        """
+        Test full pipeline of eye movements classification running without exceptions.
+        Here we do not test estimation & visualizations.
+        """
+        cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
+        cls.classify_eyemovements(self.train_dataset, sp_only=True, visualize=True, estimate=False)
+
 
 
 

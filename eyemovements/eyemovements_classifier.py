@@ -61,6 +61,7 @@ class EyemovementsClassifier:
                 logger.error(f"No pre-initialized config given and no configuration file found at {config_path}.")
                 raise FileNotFoundError
 
+        self.__init_algorithm()
 
     def __init_algorithm(self):
         """
@@ -127,16 +128,18 @@ class EyemovementsClassifier:
         data['x_diff'] = data["stim_X"] - data["filtered_X"]
         data['y_diff'] = data["stim_Y"] - data["filtered_Y"]
 
+        if visualize:
+            try:
+                visualize_eyemovements(data, to_save=False)
+            except Exception as ex:
+                logger.error(f"""Error occurred while visualizing eye movements results:
+                             {traceback.print_tb(ex.__traceback__)}""")
+
         data = horizontal_align_data(data,
                                      grouping_cols=['user_id', 'session_id', 'stimulus_type', 'move_id'],
                                      aligning_cols=['x_diff', 'y_diff']).reset_index().rename({"index": "sp_id"},
                                                                                                  axis=1)
-        if visualize:
-            try:
-                visualize_eyemovements(data, to_save=True)
-            except Exception as ex:
-                logger.error(f"""Error occurred while visualizing eye movements results:
-                             {traceback.print_tb(ex.__traceback__)}""")
+
         return data
 
 

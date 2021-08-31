@@ -24,22 +24,29 @@ from config import config
 import logging_handler
 logger = logging_handler.get_logger(__name__)
 
-def visualize_eyemovements(data: pd.DataFrame, to_save: bool=True):
+def visualize_eyemovements(data: pd.DataFrame, to_save: bool=False):
     """
     Visualize in simple scatter plot eye movements classification results.
     Input data - is a DataFrame with time, x, y and classification labels
     """
-    if ~(("gaze_X" in data.columns) and ("gaze_Y" in data.columns)
-            and ("movements_type" in data.columns) and ("timestamps" in data.columns)):
-        logger.error(f"Some columns do not exists in given data: {data.columns}")
+    if not (("gaze_X" in data.columns) and ("gaze_Y" in data.columns)):
+        logger.error(f"Gaze X & Y columns do not exists in given data:\n{data.columns}")
+        raise AttributeError
+
+    if not ("movements_type" in data.columns):
+        logger.error(f"`movements_type` column do not exists in given data:\n{data.columns}")
+        raise AttributeError
+
+    if not ("timestamps" in data.columns):
+        logger.error(f"`timestamps` column do not exists in given data:\n{data.columns}")
         raise AttributeError
 
     settings_dir = Path(config.get("Basic", "settings_dir"))
-    if ~settings_dir.exists():
+    if not settings_dir.exists():
         logger.error(f"Settings dir do not exist by path: {settings_dir}")
         raise FileNotFoundError
 
-    if ~(settings_dir / "color_mappings.json").exists() or ~(settings_dir / "eng_rus_names.json").exists():
+    if not (settings_dir / "color_mappings.json").exists() or not (settings_dir / "eng_rus_names.json").exists():
         logger.error(f"Settings files for visualizations do not exist by path: {settings_dir}")
         raise FileNotFoundError
 
@@ -89,14 +96,15 @@ def visualize_eyemovements(data: pd.DataFrame, to_save: bool=True):
     fig.update_layout(showlegend=True)
 
     if to_save:
-        if ~Path(config.get("Basic", "output_dir")).exists():
-            logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
+        if not Path(config.get("Basic", "output_dir")).exists():
+            logger.info(f"Output dir is not exists. Creating at {config.get('Basic', 'output_dir')}...")
             Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
 
-        fn = f"eyemovements_visualization_from_{datetime.datetime.now().strftime('%Y-%m-%d_%H:%M')}"
-        plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir"))
-                                              / (fn + '.html')))
-        logger.debug(f"Visualizations file successfully saved to: {fn}")
+        fn = f"eyemovements_visualization_from_{datetime.datetime.now().strftime('%Y-%m-%d_%H:%M')}.html"
+        # plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / fn))
+        fig.write_html(filename=str(Path(config.get("Basic", "output_dir")) / fn))
+        fig.show()
+        logger.info(f"Visualizations file successfully saved to: {fn}")
     else:
         fig.show()
 
