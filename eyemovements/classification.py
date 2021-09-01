@@ -11,7 +11,7 @@ from helpers import read_json
 from eyemovements.eyemovements_utils import get_movement_indexes, GazeState
 from eyemovements.filtering import sgolay_filter_dataset
 from eyemovements.ivdt_algorithm import IVDT
-from eyemovements.eyemovements_metrics import estimate_quality
+from eyemovements.eyemovements_metrics_old import estimate_quality
 from data_utilities import horizontal_align_data, groupby_session, interpolate_sessions
 
 import warnings

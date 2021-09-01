@@ -101,10 +101,9 @@ def visualize_eyemovements(data: pd.DataFrame, to_save: bool=False):
             Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
 
         fn = f"eyemovements_visualization_from_{datetime.datetime.now().strftime('%Y-%m-%d_%H:%M')}.html"
-        # plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / fn))
-        fig.write_html(filename=str(Path(config.get("Basic", "output_dir")) / fn))
+        fig.write_html(file=str(Path(config.get("Basic", "output_dir")) / fn), include_plotlyjs=False)
         fig.show()
-        logger.info(f"Visualizations file successfully saved to: {fn}")
+        logger.info(f"Visualizations file successfully saved to: {str(Path(config.get('Basic', 'output_dir')) / fn)}")
     else:
         fig.show()
 

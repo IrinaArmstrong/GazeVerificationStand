@@ -8,7 +8,7 @@ from helpers import read_json
 from config import init_config, config
 from eyemovements.ivdt_algorithm import IVDT
 from eyemovements.filtering import sgolay_filter_dataset
-from eyemovements.eyemovements_metrics import estimate_quality
+from eyemovements.eyemovements_metrics_old import estimate_quality
 from eyemovements.eyemovements_utils import get_sp_moves_dataset
 from visualizations.visualization import visualize_eyemovements
 from data_utilities import (horizontal_align_data, groupby_session, interpolate_sessions)
@@ -83,7 +83,8 @@ class EyemovementsClassifier:
     def classify_eyemovements(self, data: pd.DataFrame,
                               sp_only: bool=True,
                               estimate: bool=True,
-                              visualize: bool=True) -> List[pd.DataFrame]:
+                              visualize: bool=True,
+                              to_save: bool=True) -> List[pd.DataFrame]:
         """
         Make eye movements classification in training or running mode.
         :param data: dataframe with gaze data
@@ -130,7 +131,7 @@ class EyemovementsClassifier:
 
         if visualize:
             try:
-                visualize_eyemovements(data, to_save=False)
+                visualize_eyemovements(data, to_save=to_save)
             except Exception as ex:
                 logger.error(f"""Error occurred while visualizing eye movements results:
                              {traceback.print_tb(ex.__traceback__)}""")

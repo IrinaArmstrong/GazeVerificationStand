@@ -12,7 +12,7 @@ from create_training_dataset import TrainDataset
 from eyemovements.filtering import sgolay_filter_dataset
 from eyemovements.eyemovements_utils import get_sp_moves_dataset
 from data_utilities import groupby_session, horizontal_align_data, interpolate_sessions
-from eyemovements.eyemovements_metrics import estimate_quality
+from eyemovements.eyemovements_metrics_old import estimate_quality
 from visualizations.visualization import visualize_eyemovements
 
 import warnings
@@ -106,10 +106,19 @@ class TestEyemovementsModule(unittest.TestCase):
     def test_full_pipeline_visualize(self):
         """
         Test full pipeline of eye movements classification running without exceptions.
-        Here we do not test estimation & visualizations.
+        Here we test visualization part.
         """
         cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
         cls.classify_eyemovements(self.train_dataset, sp_only=True, visualize=True, estimate=False)
+
+
+    def test_full_pipeline_estimate(self):
+        """
+        Test full pipeline of eye movements classification running without exceptions.
+        Here we test estimation part.
+        """
+        cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
+        cls.classify_eyemovements(self.train_dataset, sp_only=True, visualize=False, estimate=True)
 
 
 
