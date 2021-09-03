@@ -8,6 +8,9 @@ from typing import (List, Dict, Any, Tuple, TypeVar)
 import warnings
 warnings.filterwarnings('ignore')
 
+import logging_handler
+logger = logging_handler.get_logger(__name__)
+
 GazeAnalyzerType = TypeVar("GazeAnalyzerType", bound='GazeAnalyzer')
 GazeStateType = TypeVar("GazeStateType", bound="GazeState")
 
@@ -27,6 +30,7 @@ class GazeState:
     def decode(cls, attr_num: int):
         attr_name = [key for key, val in dict(GazeState.__dict__).items() if val == attr_num]
         return attr_name[0] if len(attr_name) > 0 else "unknown"
+
 
 def get_movement_indexes(movements: np.ndarray,
                          movement_type: int) -> List[List[int]]:
@@ -157,6 +161,49 @@ def filter_arrays(data: Dict[str, Any], mask: List[int]) -> Dict[str, Any]:
     return data
 
 
+def get_previous_saccade(movements: np.ndarray,
+                         fix_start_index: int) -> List[int]:
+    """
+    Select previous saccade movement (before current fixation)
+    :return: previous saccade indexes in given eye movements.
+    """
+    i = fix_start_index - 1
+    saccade = []
+    while i >= 0:
+        # yet another point to saccade
+        if movements[i] == GazeState.saccade:
+            saccade.append(i)
+            i -= 1
+        # found saccade ended, return
+        elif (movements[i] != GazeState.saccade) and (len(saccade) > 0):
+            return saccade
+        else:
+            i -= 1
+    logger.info("No saccades were found in eye movements")
+    return list(reversed(saccade))
+
+
+def get_movement_for_index(index: Tuple[int],
+                           movements: np.ndarray) -> List[int]:
+    """
+    Get full movement indexes for given single point of eye movement (as index).
+    """
+    state = movements[index]
+    prev_state = state
+    start_index, end_index = index, index
+
+    while (prev_state == state) and (start_index >= 0):
+        start_index -= 1
+        prev_state = movements[start_index]
+
+    prev_state = movements[index]
+    while (prev_state == state) and (end_index < (len(movements) - 1)):
+        end_index += 1
+        prev_state = movements[end_index]
+
+    return list(range(start_index + 1, end_index, 1))
+
+
 def x_axis_angle(point_start: Tuple[float, float],
                  point_end: Tuple[float, float]) -> float:
     """
@@ -213,6 +260,7 @@ def get_amplitude_and_angle(gaze: np.ndarray) -> List[float]:
             radians = np.pi + radians
     return [amplitude, radians]
 
+
 def get_path_and_centroid(gaze: np.ndarray) -> List[float]:
     """
     Calculate centroid and path length.
@@ -238,4 +286,7 @@ def get_path_and_centroid(gaze: np.ndarray) -> List[float]:
         sumy += gaze_y
     return [distance, center_x, center_y]
 
-
+def get_closest_centroid(centroid: List[float],
+                         centroids_list: List[List[float]]):
+    dists = [euclidean(centroid, cc) for cc in centroids_list]
+    return np.argmax(dists), np.max(dists)
