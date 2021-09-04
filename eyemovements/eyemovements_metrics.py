@@ -26,6 +26,8 @@ class Metric(ABC):
 
 Metric = NewType("Metric", Metric)
 
+# ----------------------- Saccades metrics -----------------------
+
 
 class AverageSaccadesNumber(Metric):
     """
@@ -221,17 +223,13 @@ class FQnS(Metric):
             # Stimulus fixations
             stimulus_fixations = get_movement_indexes(stimulus_move, GazeState.fixation)
             stimulus_fix_points_num = len(stimulus_fixations == GazeState.fixation)
-            # Centroids as (x, y) coordinates
-            stimulus_fix_centroids = [get_path_and_centroid(stimulus_coord[fix])[1:] for fix in stimulus_fixations]
             stimulus_prev_saccades = [get_previous_saccade(stimulus_move, fix[0]) for fix in stimulus_fixations]
             default_sac_amplitude = np.mean([get_amplitude_and_angle(stimulus_coord[prev_sac])[0]
                                              for prev_sac in stimulus_prev_saccades
                                              if len(prev_sac) > 0])
 
             fixations_detected_cnt = 0
-            for stim_fix_idxs, centroid, prev_sac in zip(stimulus_fixations,
-                                                         stimulus_fix_centroids,
-                                                         stimulus_prev_saccades):
+            for stim_fix_idxs, prev_sac in zip(stimulus_fixations, stimulus_prev_saccades):
                 if len(prev_sac) > 0:
                     sac_amplitude = get_amplitude_and_angle(stimulus_coord[prev_sac])[0]
                 else:
@@ -243,9 +241,9 @@ class FQnS(Metric):
                         # get full movement indexes
                         detected_fix = get_movement_for_index(idx, gaze_move)
                         if len(detected_fix) > 0:
-                            # get gaze movement centroid
+                            # get gaze movement centroid as (x, y) coordinates
                             (xc, yc) = get_path_and_centroid(gaze_coord[detected_fix])[1:]
-                            # stimulus movement centroid
+                            # stimulus movement as centroid
                             (xs, ys) = stimulus_coord[idx]
                             # compare
                             if euclidean((xs, ys), (xc, yc)) <= amplitude_coefficient * sac_amplitude:
@@ -254,3 +252,297 @@ class FQnS(Metric):
             fqns = 100 * (fixations_detected_cnt / stimulus_fix_points_num)
             fqns_estims.append(fqns)
         return fqns_estims
+
+
+class FQlS(Metric):
+    """
+    The Fixation Qualitative Score (FQlS) compares the spatial proximity
+    of the classified eye fixation signal to the presented stimulus signal,
+    therefore indicating the positional accuracy or error of the classified fixations.
+
+    ! Mark up (expert assessment or the most probable eye movements on given stimuli path)
+    of stimulus data should be given !
+    """
+
+    def __init__(self):
+        super().__init__("Fixation Qualitative Score (FQlS)")
+
+    def estimate(self, data: List[np.ndarray], **kwargs) -> Any:
+        """
+        Estimates on Dataset - list of sessions.
+        kwargs: 'gaze_coordinates' - gaze x and y coordinates (as 2 dim. array)
+                'stimulus_eyemovements' - stimulus eye movements - expert assessment
+                                        or the most probable eye movements on given stimuli path (as 1 dim. array)
+                'stimulus_coordinates' - stimulus x and y coordinates (as 2 dim. array),
+                                        optional - if not given 'gaze_coordinates' would be used.
+                `averaging_strategy` - way to average estimates over all sessions: `micro` or `macro`.
+        """
+        gaze_coordinates = kwargs.get("gaze_coordinates", None)
+        if gaze_coordinates is None:
+            logger.error(f"Necessary parameter `gaze_coordinates` was not provided in **kwargs.")
+            raise AttributeError
+
+        stimulus_eyemovements = kwargs.get("stimulus_eyemovements", None)
+        if stimulus_eyemovements is None:
+            logger.error(f"Necessary parameter `stimulus_eyemovements` was not provided in **kwargs.")
+            raise AttributeError
+
+        stimulus_coordinates = kwargs.get("stimulus_coordinates", gaze_coordinates)
+        amplitude_coefficient = kwargs.get("amplitude_coefficient", 1/3)
+
+        averaging_strategy = kwargs.get("averaging_strategy", 'macro')
+        if averaging_strategy not in ['micro', 'macro']:
+            logger.error(f"Averaging parameter `averaging_strategy` is not one from available: ['micro', 'macro']")
+            logger.warn(f"Setting to `macro`")
+            averaging_strategy = 'macro'
+
+        # For each session
+        fqls_estims = []
+
+        for gaze_move, gaze_coord, stimulus_move, stimulus_coord in zip(data, gaze_coordinates,
+                                                                        stimulus_eyemovements, stimulus_coordinates):
+            # Stimulus fixations
+            stimulus_fixations = get_movement_indexes(stimulus_move, GazeState.fixation)
+            stimulus_fix_points_num = len((stimulus_fixations == GazeState.fixation).nonzero())
+
+            stimulus_prev_saccades = [get_previous_saccade(stimulus_move, fix[0]) for fix in stimulus_fixations]
+            default_sac_amplitude = np.mean([get_amplitude_and_angle(stimulus_coord[prev_sac])[0]
+                                             for prev_sac in stimulus_prev_saccades
+                                             if len(prev_sac) > 0])
+            # Gaze
+            gaze_fixations = get_movement_indexes(gaze_move, GazeState.fixation)
+            # get gaze movement centroid as (x, y) coordinates
+            gaze_fix_centroids = [get_path_and_centroid(gaze_coord[fix])[1:] for fix in gaze_fixations]
+
+            fixations_dists_list = []
+            # Iterate over all found fixations
+            for fixations_idxes in stimulus_fixations:
+                for fix_idx in fixations_idxes:
+                    # If on the same state in gaze eye movements there is a fixation
+                    if gaze_move[fix_idx] == GazeState.fixation:
+                        # get full movement indexes
+                        detected_fix = get_movement_for_index(fix_idx, gaze_move)
+                        if len(detected_fix) > 0:
+                            # get gaze movement centroid as (x, y) coordinates
+                            (xc, yc) = get_path_and_centroid(gaze_coord[detected_fix])[1:]
+                            # stimulus movement as centroid
+                            (xs, ys) = stimulus_coord[fix_idx]
+                            fixations_dist = euclidean((xs, ys), (xc, yc))
+                            # Compare if found fixation point is close
+                            if fixations_dist <= amplitude_coefficient * default_sac_amplitude:
+                                # Computes the Euclidean distance
+                                fixations_dists_list.append(fixations_dist)
+            if averaging_strategy == 'macro':
+                fqls_estims.append(np.mean(fixations_dists_list))
+            else:
+                fqls_estims.extend(fixations_dists_list)
+
+        return np.mean(fqls_estims)
+
+# -------------------- Smooth Persuite Metrics ----------------
+
+
+class AverageSPNumber(Metric):
+    """
+    Count average number of Smooth Persuites.
+    """
+
+    def __init__(self):
+        super().__init__("Average Smooth Persuite Number")
+
+    def estimate(self, data: List[np.ndarray], **kwargs) -> Any:
+        """
+        Estimates on Dataset - list of sessions.
+        """
+        return np.mean([len(get_movement_indexes(session, GazeState.sp)) for session in data])
+
+
+class PQlS(Metric):
+    """
+    The intuitive idea behind the smooth pursuit qualitative scores (PQlS)
+    is to compare the proximity of the detected SP signal with the signal
+    presented in the stimuli.
+    Two scores are indicative of positional (PQlS_P) and velocity (PQlS_V) accuracy.
+
+    ! Mark up (expert assessment or the most probable eye movements on given stimuli path)
+    of stimulus data should be given !
+    """
+
+    def __init__(self):
+        super().__init__("Smooth Pursuit Qualitative Scores (PQlS)")
+
+    def estimate(self, data: List[np.ndarray], **kwargs) -> Any:
+        """
+        Estimates on Dataset - list of sessions.
+        - `data` - gaze eye movements
+        kwargs: 'gaze_coordinates' - gaze x and y coordinates (as 2 dim. array)
+                'stimulus_eyemovements' - stimulus eye movements - expert assessment
+                                        or the most probable eye movements on given stimuli path (as 1 dim. array)
+                'stimulus_coordinates' - stimulus x and y coordinates (as 2 dim. array),
+                                        optional - if not given 'gaze_coordinates' would be used.
+                `gaze_velocity` - gaze velocity as sqrt(vel_x^2 + vel_y^2)
+                `stimulus_velocity` - stimulus velocity as sqrt(vel_x^2 + vel_y^2),
+                                    optional - if not given 'gaze_velocity' would be used.
+        """
+        gaze_coordinates = kwargs.get("gaze_coordinates", None)
+        if gaze_coordinates is None:
+            logger.error(f"Necessary parameter `gaze_coordinates` was not provided in **kwargs.")
+            raise AttributeError
+
+        stimulus_eyemovements = kwargs.get("stimulus_eyemovements", None)
+        if stimulus_eyemovements is None:
+            logger.error(f"Necessary parameter `stimulus_eyemovements` was not provided in **kwargs.")
+            raise AttributeError
+
+        stimulus_coordinates = kwargs.get("stimulus_coordinates", gaze_coordinates)
+
+        gaze_velocity = kwargs.get("gaze_velocity", None)
+        if stimulus_eyemovements is None:
+            logger.error(f"Necessary parameter `gaze_velocity` was not provided in **kwargs.")
+            raise AttributeError
+
+        stimulus_velocity = kwargs.get("stimulus_velocity", gaze_velocity)
+
+        # For each session
+        pqls_p_estims = []
+        pqls_v_estims = []
+
+        for pack in zip(data, gaze_coordinates, gaze_velocity,
+                        stimulus_eyemovements, stimulus_coordinates, stimulus_velocity):
+            # Unpack tuple
+            gaze_move, gaze_coord, gaze_vel, stimulus_move, stimulus_coord, stim_vel = pack
+
+            # Stimulus sp
+            stimulus_sp = get_movement_indexes(stimulus_move, GazeState.sp)
+            # Gaze
+            gaze_sp = get_movement_indexes(gaze_move, GazeState.sp)
+
+            sp_detected_cnt = 0
+            vel_diff = 0
+            dist_diff = 0
+
+            # Iterate over found SPs
+            for sp_idxes in stimulus_sp:
+                for sp_idx in sp_idxes:
+                    # If on the same state in gaze eye movements there is a SP
+                    if gaze_move[sp_idx] == GazeState.sp:
+                        sp_detected_cnt += 1
+                        vel_diff += np.abs(stim_vel[sp_idx] - gaze_vel[sp_idx])
+                        dist_diff += euclidean(stimulus_coord[sp_idx], gaze_coord[sp_idx])
+            if sp_detected_cnt > 0:
+                pqls_p = dist_diff / sp_detected_cnt
+                pqls_v = vel_diff / sp_detected_cnt
+            else:
+                pqls_p = np.inf
+                pqls_v = np.inf
+
+            pqls_p_estims.append(pqls_p)
+            pqls_v_estims.append(pqls_v)
+
+        return np.mean(pqls_p_estims), np.mean(pqls_v_estims)
+
+
+class PQnS(Metric):
+    """
+    The smooth pursuit quantitative score (PQnS) measures the amount of detected SP behavior given
+    the SP behavior encoded in the stimuli.
+
+    ! Mark up (expert assessment or the most probable eye movements on given stimuli path)
+    of stimulus data should be given !
+    """
+
+    def __init__(self):
+        super().__init__("Smooth Pursuit Quantitative Score (PQnS)")
+
+    def estimate(self, data: List[np.ndarray], **kwargs) -> Any:
+        """
+        Estimates on Dataset - list of sessions.
+        - `data` - gaze eye movements
+        kwargs: 'gaze_coordinates' - gaze x and y coordinates (as 2 dim. array)
+                'stimulus_eyemovements' - stimulus eye movements - expert assessment
+                                        or the most probable eye movements on given stimuli path (as 1 dim. array)
+                'stimulus_coordinates' - stimulus x and y coordinates (as 2 dim. array),
+                                        optional - if not given 'gaze_coordinates' would be used.
+        """
+        gaze_coordinates = kwargs.get("gaze_coordinates", None)
+        if gaze_coordinates is None:
+            logger.error(f"Necessary parameter `gaze_coordinates` was not provided in **kwargs.")
+            raise AttributeError
+
+        stimulus_eyemovements = kwargs.get("stimulus_eyemovements", None)
+        if stimulus_eyemovements is None:
+            logger.error(f"Necessary parameter `stimulus_eyemovements` was not provided in **kwargs.")
+            raise AttributeError
+
+        stimulus_coordinates = kwargs.get("stimulus_coordinates", gaze_coordinates)
+
+        # For each session
+        pqns_estims = []
+
+        for gaze_move, gaze_coord, stimulus_move, stimulus_coord in zip(data, gaze_coordinates,
+                                                                        stimulus_eyemovements, stimulus_coordinates):
+            # Stimulus SP
+            stimulus_sp = get_movement_indexes(stimulus_move, GazeState.sp)
+            stimulus_paths = [get_path_and_centroid(stimulus_coord[sp])[0] for sp in stimulus_sp]
+            # Gaze
+            gaze_sp = get_movement_indexes(gaze_move, GazeState.sp)
+            gaze_paths = [get_path_and_centroid(gaze_coord[sp])[0] for sp in gaze_sp]
+
+            pqns = 100 * (np.sum(gaze_paths) / (np.sum(stimulus_paths)
+                                                + sys.float_info.epsilon))  # to prevent zero division
+            pqns_estims.append(pqns)
+
+        return np.mean(pqns_estims)
+
+
+class MisFix(Metric):
+    """
+    Misclassification error of the SP can be determined during a fixation stimulus,
+    when correct classification is most challenging.
+
+    ! Mark up (expert assessment or the most probable eye movements on given stimuli path)
+    of stimulus data should be given !
+    """
+
+    def __init__(self):
+        super().__init__("Misclassification Error SP/Fixation (MisFix)")
+
+    def estimate(self, data: List[np.ndarray], **kwargs) -> Any:
+        """
+        Estimates on Dataset - list of sessions.
+        - `data` - gaze eye movements
+        kwargs: 'gaze_coordinates' - gaze x and y coordinates (as 2 dim. array)
+                'stimulus_eyemovements' - stimulus eye movements - expert assessment
+                                        or the most probable eye movements on given stimuli path (as 1 dim. array)
+                'stimulus_coordinates' - stimulus x and y coordinates (as 2 dim. array),
+                                        optional - if not given 'gaze_coordinates' would be used.
+        """
+        gaze_coordinates = kwargs.get("gaze_coordinates", None)
+        if gaze_coordinates is None:
+            logger.error(f"Necessary parameter `gaze_coordinates` was not provided in **kwargs.")
+            raise AttributeError
+
+        stimulus_eyemovements = kwargs.get("stimulus_eyemovements", None)
+        if stimulus_eyemovements is None:
+            logger.error(f"Necessary parameter `stimulus_eyemovements` was not provided in **kwargs.")
+            raise AttributeError
+
+        stimulus_coordinates = kwargs.get("stimulus_coordinates", gaze_coordinates)
+
+        # For each session
+        misfix_estims = []
+        for gaze_move, gaze_coord, stimulus_move, stimulus_coord in zip(data, gaze_coordinates,
+                                                                        stimulus_eyemovements, stimulus_coordinates):
+            # Stimulus fixations
+            stimulus_fixations = list(chain.from_iterable(get_movement_indexes(stimulus_move, GazeState.fixation)))
+            stimulus_fix_points_num = len((stimulus_fixations == GazeState.fixation).nonzero())
+            # Gaze
+            gaze_sp = list(chain.from_iterable(get_movement_indexes(gaze_move, GazeState.sp)))
+
+            # Calculate error
+            mis_class = len([stim_fix_ind for stim_fix_ind in stimulus_fixations
+                             if stim_fix_ind in gaze_sp])
+            misfix = 100 * (mis_class / (stimulus_fix_points_num + sys.float_info.epsilon))  # to prevent zero division
+            misfix_estims.append(misfix)
+
+        return np.mean(misfix_estims)
