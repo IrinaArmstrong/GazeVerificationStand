@@ -23,8 +23,11 @@ class Metric(ABC):
     def estimate(self, data: Union[List[np.ndarray], np.ndarray], **kwargs) -> Any:
         pass
 
+    def get_name(self):
+        return self._name
 
-Metric = NewType("Metric", Metric)
+
+MetricType = NewType("MetricType", Metric)
 
 # ----------------------- Saccades metrics -----------------------
 

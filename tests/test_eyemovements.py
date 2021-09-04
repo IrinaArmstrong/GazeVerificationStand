@@ -3,7 +3,7 @@ import random
 
 import numpy as np
 import pandas as pd
-from pprint import pprint
+from pathlib import Path
 
 from helpers import read_json
 from config import config, init_config
@@ -109,7 +109,12 @@ class TestEyemovementsModule(unittest.TestCase):
         Here we test visualization part.
         """
         cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
-        cls.classify_eyemovements(self.train_dataset, sp_only=True, visualize=True, estimate=False)
+        classified = cls.classify_eyemovements(self.train_dataset,
+                                               sp_only=False,
+                                               h_align=False,
+                                               visualize=False,
+                                               estimate=False)
+        # classified[0].to_csv(Path(config.get("Basic", "output_dir")) / "eyemovements_test_output_df.csv", sep=';')
 
 
     def test_full_pipeline_estimate(self):

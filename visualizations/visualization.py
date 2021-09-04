@@ -24,7 +24,9 @@ from config import config
 import logging_handler
 logger = logging_handler.get_logger(__name__)
 
-def visualize_eyemovements(data: pd.DataFrame, to_save: bool=False):
+
+def visualize_eyemovements(data: pd.DataFrame,
+                           to_save: bool = False, session_num: int = 0):
     """
     Visualize in simple scatter plot eye movements classification results.
     Input data - is a DataFrame with time, x, y and classification labels
@@ -101,7 +103,10 @@ def visualize_eyemovements(data: pd.DataFrame, to_save: bool=False):
             Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
 
         fn = f"eyemovements_visualization_from_{datetime.datetime.now().strftime('%Y-%m-%d_%H:%M')}.html"
-        fig.write_html(file=str(Path(config.get("Basic", "output_dir")) / fn), include_plotlyjs=False)
+        # If file with this name already exists -> previous session of current experiment
+        if (Path(config.get("Basic", "output_dir")) / fn).exists():
+            fn = fn.split(".")[0] + f"_sess_{session_num}" + fn.split(".")[-1]
+        fig.write_html(file=str(fn), include_plotlyjs=False)
         fig.show()
         logger.info(f"Visualizations file successfully saved to: {str(Path(config.get('Basic', 'output_dir')) / fn)}")
     else:

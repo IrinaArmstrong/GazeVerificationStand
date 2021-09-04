@@ -62,7 +62,7 @@ def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
     :return: dataframe with only SP moves.
     """
     sps = []
-    for df in tqdm(data):
+    for df in data:
         moves_sp = get_movement_indexes(df['movements'], GazeState.sp)
         if len(moves_sp) > 0:
             for sp_ids in moves_sp:
@@ -70,7 +70,7 @@ def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
     for i, sp_df in enumerate(sps):
         sp_df.loc[:, 'move_id'] = i
 
-    print(f"In classified sessions there are {len(sps)} with total length: {np.sum([len(s) for s in sps])} SP.")
+    logger.info(f"In classified sessions there are {len(sps)} with total length: {np.sum([len(s) for s in sps])} SP.")
     sps = pd.concat(sps, ignore_index=True)
     return sps
 

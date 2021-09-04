@@ -81,7 +81,7 @@ class EyemovementsClassifier:
             raise NotImplementedError
 
     def classify_eyemovements(self, data: pd.DataFrame,
-                              sp_only: bool=True,
+                              sp_only: bool=True, h_align: bool=True,
                               estimate: bool=True,
                               visualize: bool=True,
                               to_save: bool=True) -> List[pd.DataFrame]:
@@ -126,20 +126,29 @@ class EyemovementsClassifier:
             data = get_sp_moves_dataset(data)
 
         # Update difference using filtered gaze coordinates
-        data['x_diff'] = data["stim_X"] - data["filtered_X"]
-        data['y_diff'] = data["stim_Y"] - data["filtered_Y"]
+        if type(data) == list:
+            for d in data:
+                d['x_diff'] = d["stim_X"] - d["filtered_X"]
+                d['y_diff'] = d["stim_Y"] - d["filtered_Y"]
+        else:
+            data['x_diff'] = data["stim_X"] - data["filtered_X"]
+            data['y_diff'] = data["stim_Y"] - data["filtered_Y"]
 
         if visualize:
             try:
-                visualize_eyemovements(data, to_save=to_save)
+                if type(data) == list:
+                    for i, d in enumerate(data):
+                        visualize_eyemovements(d, to_save=to_save, session_num=i)
+                else:
+                    visualize_eyemovements(data, to_save=to_save)
             except Exception as ex:
                 logger.error(f"""Error occurred while visualizing eye movements results:
                              {traceback.print_tb(ex.__traceback__)}""")
-
-        data = horizontal_align_data(data,
-                                     grouping_cols=['user_id', 'session_id', 'stimulus_type', 'move_id'],
-                                     aligning_cols=['x_diff', 'y_diff']).reset_index().rename({"index": "sp_id"},
-                                                                                                 axis=1)
+        if h_align:
+            data = horizontal_align_data(data,
+                                         grouping_cols=['user_id', 'session_id', 'stimulus_type', 'move_id'],
+                                         aligning_cols=['x_diff', 'y_diff']).reset_index().rename({"index": "sp_id"},
+                                                                                                     axis=1)
 
         return data
 
