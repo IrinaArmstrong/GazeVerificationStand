@@ -8,8 +8,8 @@ from helpers import read_json
 from config import init_config, config
 from eyemovements.ivdt_algorithm import IVDT
 from eyemovements.filtering import sgolay_filter_dataset
-from eyemovements.eyemovements_metrics_old import estimate_quality
 from eyemovements.eyemovements_utils import get_sp_moves_dataset
+from eyemovements.eyemovements_estimator import EyemovementsEstimator
 from visualizations.visualization import visualize_eyemovements
 from data_utilities import (horizontal_align_data, groupby_session, interpolate_sessions)
 
@@ -51,6 +51,8 @@ class EyemovementsClassifier:
         self._algorithm_name = algorithm
         self._algorithm = None
         self._model_params = {}
+
+        # self._estimator = EyemovementsEstimator()
 
         # If config is not pre-initialized
         if len(config.sections()) == 0:
@@ -115,12 +117,12 @@ class EyemovementsClassifier:
                                                 velocity_col='velocity_sqrt',
                                                 thresholds=thresholds_dict)
 
-        if estimate:
-            metrics = estimate_quality(data)
-            quality_report = f"Eye movements classification metrics\n:"
-            for metric_key, metric_val in metrics.items():
-                quality_report += f"{metric_key} = {metric_val}\n"
-            logger.info(quality_report)
+        # if estimate:  todo!!!
+        #     metrics = estimate_quality(data)
+        #     quality_report = f"Eye movements classification metrics\n:"
+        #     for metric_key, metric_val in metrics.items():
+        #         quality_report += f"{metric_key} = {metric_val}\n"
+        #     logger.info(quality_report)
 
         if sp_only:
             data = get_sp_moves_dataset(data)

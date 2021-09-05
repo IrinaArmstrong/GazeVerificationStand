@@ -23,7 +23,7 @@ class Metric(ABC):
     def estimate(self, data: Union[List[np.ndarray], np.ndarray], **kwargs) -> Any:
         pass
 
-    def get_name(self):
+    def __str__(self):
         return self._name
 
 
@@ -44,7 +44,9 @@ class AverageSaccadesNumber(Metric):
         """
         Estimates on Dataset - list of sessions.
         """
-        return np.mean([len(get_movement_indexes(session, GazeState.saccade)) for session in data])
+
+        return np.mean([len(get_movement_indexes(session, GazeState.saccade))
+                        for session in data])
 
 
 class AverageSaccadesAmplitude(Metric):
@@ -124,13 +126,13 @@ class SQnS(Metric):
         for gaze_move, gaze_coord, stimulus_move, stimulus_coord in zip(data, gaze_coordinates,
                                                                         stimulus_eyemovements, stimulus_coordinates):
             # Stimulus
-            stimulus_sac = get_movement_indexes(stimulus_coord, GazeState.saccade)
+            stimulus_sac = get_movement_indexes(stimulus_move, GazeState.saccade)
             stimulus_ampl_sum = (np.sum([get_amplitude_and_angle(stimulus_coord[sac])[0]
                                          for sac in stimulus_sac])
                                  + sys.float_info.epsilon)  # to prevent zero division
 
             # Gaze
-            gaze_sac = get_movement_indexes(gaze_coord, GazeState.saccade)
+            gaze_sac = get_movement_indexes(gaze_move, GazeState.saccade)
             gaze_ampl_sum = (np.sum([get_amplitude_and_angle(gaze_coord[sac])[0]
                                      for sac in gaze_sac])
                              + sys.float_info.epsilon)  # to prevent zero division
@@ -225,11 +227,31 @@ class FQnS(Metric):
                                                                         stimulus_eyemovements, stimulus_coordinates):
             # Stimulus fixations
             stimulus_fixations = get_movement_indexes(stimulus_move, GazeState.fixation)
-            stimulus_fix_points_num = len(stimulus_fixations == GazeState.fixation)
-            stimulus_prev_saccades = [get_previous_saccade(stimulus_move, fix[0]) for fix in stimulus_fixations]
-            default_sac_amplitude = np.mean([get_amplitude_and_angle(stimulus_coord[prev_sac])[0]
-                                             for prev_sac in stimulus_prev_saccades
-                                             if len(prev_sac) > 0])
+            # Gaze fixations
+            gaze_fixations = get_movement_indexes(gaze_move, GazeState.fixation)
+
+            # if in both: stimulus and gaze there are no fixations at all -> good, 100 grad.
+            if (len(stimulus_fixations) == 0) and (len(gaze_fixations) == 0):
+                logger.warning("During computation FQnS score no stimulus and gaze fixations detected. Score -> 100 grad.")
+                fqns_estims.append(100.0)
+                continue
+            # if in stimulus there are no fixations at all, but in gaze are -> bad, 0 grad.
+            elif (len(stimulus_fixations) == 0) and (len(gaze_fixations) > 0):
+                logger.warning("During computation FQlS score no stimulus fixations detected, but in gaze found few.")
+                logger.warning("Score -> 0 grad.")
+                fqns_estims.append(0.0)
+                continue
+            elif (len(stimulus_fixations) > 0) and (len(gaze_fixations) == 0):
+                logger.warning("During computation FQlS score no gaze fixations detected, but in stimulus found few.")
+                logger.warning("Score -> 0 grad.")
+                fqns_estims.append(0.0)
+                continue
+            else:
+                stimulus_fix_points_num = len((stimulus_fixations == GazeState.fixation).nonzero())
+                stimulus_prev_saccades = [get_previous_saccade(stimulus_move, fix[0]) for fix in stimulus_fixations]
+                default_sac_amplitude = np.mean([get_amplitude_and_angle(stimulus_coord[prev_sac])[0]
+                                                 for prev_sac in stimulus_prev_saccades
+                                                 if len(prev_sac) > 0])
 
             fixations_detected_cnt = 0
             for stim_fix_idxs, prev_sac in zip(stimulus_fixations, stimulus_prev_saccades):
@@ -296,7 +318,7 @@ class FQlS(Metric):
         averaging_strategy = kwargs.get("averaging_strategy", 'macro')
         if averaging_strategy not in ['micro', 'macro']:
             logger.error(f"Averaging parameter `averaging_strategy` is not one from available: ['micro', 'macro']")
-            logger.warn(f"Setting to `macro`")
+            logger.warning(f"Setting to `macro`")
             averaging_strategy = 'macro'
 
         # For each session
@@ -306,14 +328,31 @@ class FQlS(Metric):
                                                                         stimulus_eyemovements, stimulus_coordinates):
             # Stimulus fixations
             stimulus_fixations = get_movement_indexes(stimulus_move, GazeState.fixation)
-            stimulus_fix_points_num = len((stimulus_fixations == GazeState.fixation).nonzero())
-
-            stimulus_prev_saccades = [get_previous_saccade(stimulus_move, fix[0]) for fix in stimulus_fixations]
-            default_sac_amplitude = np.mean([get_amplitude_and_angle(stimulus_coord[prev_sac])[0]
-                                             for prev_sac in stimulus_prev_saccades
-                                             if len(prev_sac) > 0])
-            # Gaze
+            # Gaze fixations
             gaze_fixations = get_movement_indexes(gaze_move, GazeState.fixation)
+
+            # if in both: stimulus and gaze there are no fixations at all -> good, 0 grad.
+            if (len(stimulus_fixations) == 0) and (len(gaze_fixations) == 0):
+                logger.warning("During computation FQlS score no stimulus and gaze fixations detected. Score -> 0 grad.")
+                fqls_estims.append(0.0)
+                continue
+            # if in stimulus there are no fixations at all, but in gaze are -> bad, inf. grad.
+            elif (len(stimulus_fixations) == 0) and (len(gaze_fixations) > 0):
+                logger.warning("During computation FQlS score no stimulus fixations detected, but in gaze found few.")
+                logger.warning("Score -> inf. grad.")
+                fqls_estims.append(np.inf)
+                continue
+            elif (len(stimulus_fixations) > 0) and (len(gaze_fixations) == 0):
+                logger.warning("During computation FQlS score no gaze fixations detected, but in stimulus found few.")
+                logger.warning("Score -> inf. grad.")
+                fqls_estims.append(np.inf)
+                continue
+            else:
+                stimulus_fix_points_num = len((stimulus_fixations == GazeState.fixation).nonzero())
+                stimulus_prev_saccades = [get_previous_saccade(stimulus_move, fix[0]) for fix in stimulus_fixations]
+                default_sac_amplitude = np.mean([get_amplitude_and_angle(stimulus_coord[prev_sac])[0]
+                                                 for prev_sac in stimulus_prev_saccades
+                                                 if len(prev_sac) > 0])
             # get gaze movement centroid as (x, y) coordinates
             gaze_fix_centroids = [get_path_and_centroid(gaze_coord[fix])[1:] for fix in gaze_fixations]
 
@@ -420,6 +459,26 @@ class PQlS(Metric):
             # Gaze
             gaze_sp = get_movement_indexes(gaze_move, GazeState.sp)
 
+            if (len(stimulus_sp) == 0) and (len(gaze_sp) == 0):
+                logger.warning("During computation PQlS score no stimulus and gaze SP detected. Scores -> 0 grad.")
+                pqls_p_estims.append(0.0)
+                pqls_v_estims.append(0.0)
+                continue
+            # If there are no SP in stimulus and there are detected some in gaze -> bad, inf. score.
+            elif (len(stimulus_sp) == 0) and (len(gaze_sp) > 0):
+                logger.warning("During computation PQlS score no stimulus SP, but some detected in gaze .")
+                logger.warning("Scores -> inf. grad.")
+                pqls_p_estims.append(np.inf)
+                pqls_v_estims.append(np.inf)
+                continue
+            # If there are SP in stimulus and there are nothing detected in gaze -> bad, inf. score.
+            elif (len(stimulus_sp) > 0) and (len(gaze_sp) == 0):
+                logger.warning("During computation PQlS score no gaze SP detected, but there some in stimulus.")
+                logger.warning("Scores -> inf. grad.")
+                pqls_p_estims.append(np.inf)
+                pqls_v_estims.append(np.inf)
+                continue
+
             sp_detected_cnt = 0
             vel_diff = 0
             dist_diff = 0
@@ -486,10 +545,21 @@ class PQnS(Metric):
                                                                         stimulus_eyemovements, stimulus_coordinates):
             # Stimulus SP
             stimulus_sp = get_movement_indexes(stimulus_move, GazeState.sp)
-            stimulus_paths = [get_path_and_centroid(stimulus_coord[sp])[0] for sp in stimulus_sp]
-            # Gaze
+            # Gaze SP
             gaze_sp = get_movement_indexes(gaze_move, GazeState.sp)
-            gaze_paths = [get_path_and_centroid(gaze_coord[sp])[0] for sp in gaze_sp]
+
+            if len(stimulus_sp) == 0:
+                logger.warning("During computation PQnS score no stimulus SP detected")
+                stimulus_paths = 0
+            else:
+                stimulus_paths = [get_path_and_centroid(stimulus_coord[sp])[0] for sp in stimulus_sp]
+
+            # If there are no SP in stimulus detected
+            if len(gaze_sp) == 0:
+                logger.warning("During computation PQlS score no gaze SP detected")
+                gaze_paths = 0
+            else:
+                gaze_paths = [get_path_and_centroid(gaze_coord[sp])[0] for sp in gaze_sp]
 
             pqns = 100 * (np.sum(gaze_paths) / (np.sum(stimulus_paths)
                                                 + sys.float_info.epsilon))  # to prevent zero division
@@ -538,9 +608,17 @@ class MisFix(Metric):
                                                                         stimulus_eyemovements, stimulus_coordinates):
             # Stimulus fixations
             stimulus_fixations = list(chain.from_iterable(get_movement_indexes(stimulus_move, GazeState.fixation)))
-            stimulus_fix_points_num = len((stimulus_fixations == GazeState.fixation).nonzero())
+            if len(stimulus_fixations) == 0:
+                stimulus_fix_points_num = 0
+            else:
+                stimulus_fix_points_num = len((stimulus_fixations == GazeState.fixation).nonzero())
             # Gaze
             gaze_sp = list(chain.from_iterable(get_movement_indexes(gaze_move, GazeState.sp)))
+
+            # No SP detected -> no mistakes
+            if len(gaze_sp) == 0:
+                misfix_estims.append(0.0)
+                continue
 
             # Calculate error
             mis_class = len([stim_fix_ind for stim_fix_ind in stimulus_fixations
@@ -549,3 +627,9 @@ class MisFix(Metric):
             misfix_estims.append(misfix)
 
         return np.mean(misfix_estims)
+
+# --------------------------- All Metrics ---------------------------
+
+all_metrics_list = [AverageSaccadesNumber, AverageSaccadesAmplitude, AverageSaccadesMagnitude, SQnS,  # saccedes
+                    AverageFixationsNumber, AverageFixationsDuration, FQlS, FQnS,  # fixations
+                    AverageSPNumber, PQnS, PQlS, MisFix]  # sp

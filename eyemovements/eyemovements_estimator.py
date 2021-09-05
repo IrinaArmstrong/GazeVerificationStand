@@ -18,22 +18,18 @@ class EyemovementsEstimator:
     def __init__(self, metrics_list: List[MetricType]):
         self.__metrics_list = metrics_list
 
-
-    def estimate_session(self, data: pd.DataFrame, **kwargs) -> Dict[AnyStr, AnyStr]:
-        """
-        Estimate single session quality.
-        kwargs: {''}
-        :return: dict with key - metric name, value - score.
-        """
-        pass
-
-    def estimate_dataset(self, data: List[pd.DataFrame],
+    def estimate_dataset(self, data: Union[List[pd.DataFrame], pd.DataFrame],
                          **kwargs) -> Union[Dict[AnyStr, AnyStr], List[Dict[AnyStr, AnyStr]]]:
         """
-        Estimate single session quality.
-        kwargs: {`averaging_strategy`, "amplitude_coefficient"}
+        Estimate multiple session (passed as list of DataFrames) quality at once.
+        For estimating single session quality pass single DataFrame.
+        kwargs: {"compare_with_all_SP", `averaging_strategy`, "amplitude_coefficient"}
         :return: dict with key - metric name, value - score.
         """
+        # Estimate single session wrapper to general case
+        if type(data) == pd.DataFrame:
+            data = [data]
+
         if not (all(["stim_X" in d for d in data]) and all(["stim_Y" in d for d in data])
                 and all(["gaze_X" in d for d in data]) and all(["gaze_Y" in d for d in data])
                 and all(["stimulus_velocity" in d for d in data]) and all(["velocity_sqrt" in d for d in data])
@@ -69,14 +65,14 @@ class EyemovementsEstimator:
         estimates = []
         try:
             if kwargs.get("to_average", False):
-                estimates = {metric.get_name(): metric.estimate(gaze_movements, **metric_kwargs)
+                estimates = {str(metric): metric.estimate(gaze_movements, **metric_kwargs)
                              for metric in self.__metrics_list}
             else:
                 for gaze_movement in gaze_movements:
-                    estimate_session = {metric.get_name(): metric.estimate(gaze_movement, **metric_kwargs)
+                    estimate_session = {str(metric): metric.estimate([gaze_movement], **metric_kwargs)
                                         for metric in self.__metrics_list}
                     estimates.append(estimate_session)
         except Exception as ex:
             logger.error(f"""Error occurred while estimating eye movements results:
                                          {traceback.print_tb(ex.__traceback__)}""")
-            return estimates
+        return estimates

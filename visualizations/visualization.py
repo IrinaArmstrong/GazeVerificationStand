@@ -106,7 +106,7 @@ def visualize_eyemovements(data: pd.DataFrame,
         # If file with this name already exists -> previous session of current experiment
         if (Path(config.get("Basic", "output_dir")) / fn).exists():
             fn = fn.split(".")[0] + f"_sess_{session_num}" + fn.split(".")[-1]
-        fig.write_html(file=str(fn), include_plotlyjs=False)
+        fig.write_html(file=str(Path(config.get("Basic", "output_dir")) / fn), include_plotlyjs=False)
         fig.show()
         logger.info(f"Visualizations file successfully saved to: {str(Path(config.get('Basic', 'output_dir')) / fn)}")
     else:

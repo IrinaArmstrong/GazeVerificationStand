@@ -12,8 +12,9 @@ from create_training_dataset import TrainDataset
 from eyemovements.filtering import sgolay_filter_dataset
 from eyemovements.eyemovements_utils import get_sp_moves_dataset
 from data_utilities import groupby_session, horizontal_align_data, interpolate_sessions
-from eyemovements.eyemovements_metrics_old import estimate_quality
-from visualizations.visualization import visualize_eyemovements
+
+from eyemovements.eyemovements_estimator import EyemovementsEstimator
+from eyemovements.eyemovements_metrics import all_metrics_list
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -86,6 +87,33 @@ class TestEyemovementsModule(unittest.TestCase):
                                             aligning_cols=['x', 'y'])
         self.assertEqual(4, testing_hdf.shape[0])
         self.assertEqual(12, testing_hdf.shape[1])
+
+    def test_estimator_single_session(self):
+        """
+        Test estimation of eye movements classifier results.
+        """
+        cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
+        classified = cls.classify_eyemovements(self.train_dataset,
+                                               sp_only=False,
+                                               h_align=False,
+                                               visualize=False,
+                                               estimate=False)
+        estim = EyemovementsEstimator([metric() for metric in all_metrics_list])
+        # Case 1: to_average=False -> list of dicts of metrics scores
+        result = estim.estimate_dataset(classified[0],
+                                        compare_with_all_SP=True,
+                                        to_average=False,
+                                        averaging_strategy='macro',
+                                        amplitude_coefficient=0.33)
+
+        self.assertTrue(type(result) == list)
+        self.assertTrue(len(result) > 0)
+        self.assertTrue(len(result[0]) > 0)  # metrics dict is not empty
+        logger.info(f"Estimate result:\n{result[0]}")
+
+
+
+
 
     def test_classifier_constrains(self):
         """

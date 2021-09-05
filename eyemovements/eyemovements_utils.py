@@ -52,6 +52,9 @@ def get_movement_indexes(movements: np.ndarray,
         list_i.append(i)
     if len(list_i) > 0:
         indexes.append(list_i)
+    if len(indexes) == 0:
+        logger.warn(f"No {GazeState.decode(movement_type)} type detected.")
+        return []
     return indexes
 
 
@@ -183,7 +186,7 @@ def get_previous_saccade(movements: np.ndarray,
     return list(reversed(saccade))
 
 
-def get_movement_for_index(index: Tuple[int],
+def get_movement_for_index(index: int,
                            movements: np.ndarray) -> List[int]:
     """
     Get full movement indexes for given single point of eye movement (as index).
