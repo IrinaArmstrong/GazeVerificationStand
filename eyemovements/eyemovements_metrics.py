@@ -1,5 +1,4 @@
 import sys
-import pandas as pd
 import numpy as np
 from itertools import chain
 from abc import ABC, abstractmethod

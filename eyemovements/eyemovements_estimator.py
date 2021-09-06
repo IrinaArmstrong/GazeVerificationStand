@@ -2,7 +2,7 @@
 import traceback
 import numpy as np
 import pandas as pd
-from typing import List, Callable, Dict, AnyStr, Union
+from typing import List, Dict, AnyStr, Union
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -68,11 +68,35 @@ class EyemovementsEstimator:
                 estimates = {str(metric): metric.estimate(gaze_movements, **metric_kwargs)
                              for metric in self.__metrics_list}
             else:
-                for gaze_movement in gaze_movements:
-                    estimate_session = {str(metric): metric.estimate([gaze_movement], **metric_kwargs)
+                for i, gaze_movement in enumerate(gaze_movements):
+                    metric_kwargs_i = {}
+                    for kname, kwarg in metric_kwargs.items():
+                        if (type(kwarg) == list):
+                            metric_kwargs_i[kname] = [kwarg[i]]
+                        else:
+                            metric_kwargs_i[kname] = kwarg
+                    estimate_session = {str(metric): metric.estimate([gaze_movement], **metric_kwargs_i)
                                         for metric in self.__metrics_list}
                     estimates.append(estimate_session)
         except Exception as ex:
             logger.error(f"""Error occurred while estimating eye movements results:
                                          {traceback.print_tb(ex.__traceback__)}""")
         return estimates
+
+    def report_quality(self, estimates: Union[Dict[AnyStr, AnyStr],
+                                              List[Dict[AnyStr, AnyStr]]]) -> str:
+        report = f"Eye movements classification metrics\n:"
+        if type(estimates) == dict:
+            for metric_name, metric_score in estimates.items():
+                report += f"{metric_name} = {metric_score}\n"
+            return report
+        elif type(estimates) == dict:
+            report += f"--" * 20
+            for sess_i, sess_estimate in enumerate(estimates):
+                report += f"\nSession #{sess_i}:\n"
+                for metric_name, metric_score in estimates.items():
+                    report += f"{metric_name} = {metric_score}\n"
+            return report
+        else:
+            logger.error(f"Unknown estimates format: {type(estimates)}, cannot calculate statistics report.")
+            return ""

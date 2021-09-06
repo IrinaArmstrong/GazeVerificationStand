@@ -6,12 +6,13 @@ from pathlib import Path
 
 from helpers import read_json
 from config import init_config, config
-from eyemovements.ivdt_algorithm import IVDT
-from eyemovements.filtering import sgolay_filter_dataset
-from eyemovements.eyemovements_utils import get_sp_moves_dataset
-from eyemovements.eyemovements_estimator import EyemovementsEstimator
+from ivdt_algorithm import IVDT
+from filtering import sgolay_filter_dataset
+from eyemovements_utils import get_sp_moves_dataset
+from eyemovements_estimator import EyemovementsEstimator
 from visualizations.visualization import visualize_eyemovements
 from data_utilities import (horizontal_align_data, groupby_session, interpolate_sessions)
+from eyemovements_metrics import all_metrics_list
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -52,7 +53,7 @@ class EyemovementsClassifier:
         self._algorithm = None
         self._model_params = {}
 
-        # self._estimator = EyemovementsEstimator()
+        self._estimator = EyemovementsEstimator([metric() for metric in all_metrics_list])
 
         # If config is not pre-initialized
         if len(config.sections()) == 0:
@@ -83,10 +84,10 @@ class EyemovementsClassifier:
             raise NotImplementedError
 
     def classify_eyemovements(self, data: pd.DataFrame,
-                              sp_only: bool=True, h_align: bool=True,
-                              estimate: bool=True,
-                              visualize: bool=True,
-                              to_save: bool=True) -> List[pd.DataFrame]:
+                              sp_only: bool = True, h_align: bool = True,
+                              estimate: bool = True,
+                              visualize: bool = True,
+                              to_save: bool = True, **kwargs) -> List[pd.DataFrame]:
         """
         Make eye movements classification in training or running mode.
         :param data: dataframe with gaze data
@@ -117,12 +118,14 @@ class EyemovementsClassifier:
                                                 velocity_col='velocity_sqrt',
                                                 thresholds=thresholds_dict)
 
-        # if estimate:  todo!!!
-        #     metrics = estimate_quality(data)
-        #     quality_report = f"Eye movements classification metrics\n:"
-        #     for metric_key, metric_val in metrics.items():
-        #         quality_report += f"{metric_key} = {metric_val}\n"
-        #     logger.info(quality_report)
+        if estimate:
+            # kwargs: {"compare_with_all_SP", `averaging_strategy`, "amplitude_coefficient"}
+            metrics = self._estimator.estimate_dataset(data,
+                                                       compare_with_all_SP=kwargs.get('compare_with_all_SP', True),
+                                                       averaging_strategy=kwargs.get('averaging_strategy', 'macro'),
+                                                       amplitude_coefficient=kwargs.get('amplitude_coefficient', 0.33))
+            quality_report = self._estimator.report_quality(metrics)
+            logger.info(quality_report)
 
         if sp_only:
             data = get_sp_moves_dataset(data)
@@ -150,7 +153,7 @@ class EyemovementsClassifier:
             data = horizontal_align_data(data,
                                          grouping_cols=['user_id', 'session_id', 'stimulus_type', 'move_id'],
                                          aligning_cols=['x_diff', 'y_diff']).reset_index().rename({"index": "sp_id"},
-                                                                                                     axis=1)
+                                                                                                  axis=1)
 
         return data
 

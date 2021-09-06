@@ -112,7 +112,28 @@ class TestEyemovementsModule(unittest.TestCase):
         logger.info(f"Estimate result:\n{result[0]}")
 
 
+    def test_estimator_multiple_session(self):
+        """
+        Test estimation of eye movements classifier results.
+        """
+        cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
+        classified = cls.classify_eyemovements(self.train_dataset,
+                                               sp_only=False,
+                                               h_align=False,
+                                               visualize=False,
+                                               estimate=False)
+        estim = EyemovementsEstimator([metric() for metric in all_metrics_list])
+        # Case 1: to_average=False -> list of dicts of metrics scores
+        result = estim.estimate_dataset(classified,
+                                        compare_with_all_SP=True,
+                                        to_average=False,
+                                        averaging_strategy='macro',
+                                        amplitude_coefficient=0.33)
 
+        self.assertTrue(type(result) == list)
+        self.assertTrue(len(result) > 0)
+        self.assertTrue(len(result[0]) > 0)  # metrics dict is not empty
+        logger.info(f"Estimate result:\n{result}")
 
 
     def test_classifier_constrains(self):
