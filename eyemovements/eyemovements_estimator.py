@@ -90,11 +90,11 @@ class EyemovementsEstimator:
             for metric_name, metric_score in estimates.items():
                 report += f"{metric_name} = {metric_score}\n"
             return report
-        elif type(estimates) == dict:
+        elif type(estimates) == list:
             report += f"--" * 20
             for sess_i, sess_estimate in enumerate(estimates):
                 report += f"\nSession #{sess_i}:\n"
-                for metric_name, metric_score in estimates.items():
+                for metric_name, metric_score in sess_estimate.items():
                     report += f"{metric_name} = {metric_score}\n"
             return report
         else:

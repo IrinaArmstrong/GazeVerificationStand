@@ -6,13 +6,13 @@ from pathlib import Path
 
 from helpers import read_json
 from config import init_config, config
-from ivdt_algorithm import IVDT
-from filtering import sgolay_filter_dataset
-from eyemovements_utils import get_sp_moves_dataset
-from eyemovements_estimator import EyemovementsEstimator
+from eyemovements.ivdt_algorithm import IVDT
+from eyemovements.filtering import sgolay_filter_dataset
+from eyemovements.eyemovements_utils import get_sp_moves_dataset
+from eyemovements.eyemovements_estimator import EyemovementsEstimator
 from visualizations.visualization import visualize_eyemovements
 from data_utilities import (horizontal_align_data, groupby_session, interpolate_sessions)
-from eyemovements_metrics import all_metrics_list
+from eyemovements.eyemovements_metrics import all_metrics_list
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
