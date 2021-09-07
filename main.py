@@ -6,13 +6,13 @@ import datasets
 from helpers import read_json
 from config import init_config, config
 from verification.trainer import Trainer
-from data_utilities import preprocess_data, normalize_gaze
-from eyemovements.classification import run_eyemovements_classification
+from data_utilities import restructure_gaze_data, normalize_gaze
+from eyemovements.eyemovements_classifier import EyemovementsClassifier
 from verification.train_dataloaders import create_training_dataloaders
 from verification.run_dataloaders import create_verification_dataloader
 
 from verification.train_utils import init_model, evaluate_verification
-from visualization import visualize_quality
+from visualizations.visualization import visualize_quality
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -23,11 +23,11 @@ class VerificationStand:
     def __init__(self, config_path: str):
         self._config_path = config_path
         init_config(config_path)
-        self._model= None
+        self._model = None
         self._trainer = Trainer()
 
 
-    def run(self, mode: str) -> Union[NoReturn, Dict[str, Any]]:
+    def run(self, mode: str) -> Union[None, Dict[str, Any]]:
         """
         Entry point for running model.
         :param mode: mode of run - 'train' or 'run'
@@ -54,8 +54,7 @@ class VerificationStand:
         data = run_eyemovements_classification(data, is_train=True, do_estimate_quality=True)
 
         # Pre-process and normalize gaze
-        data = preprocess_data(data, is_train=True, params_path=config.get('Preprocessing',
-                                                                           'processing_params'))
+        data = restructure_gaze_data(data, is_train=True, params_path=config.get('Preprocessing', 'processing_params'))
         data = normalize_gaze(data, to_restore=False, to_save=True,
                               checkpoint_dir=config.get('GazeVerification', 'pretrained_model_location'))
 
@@ -71,8 +70,6 @@ class VerificationStand:
         # Test quality
         _ = evaluate_verification(self._model, dataloader=dataloaders.get('test'),
                                   estim_quality=True, threshold=0.55)
-
-
 
 
     def _run_verification(self):

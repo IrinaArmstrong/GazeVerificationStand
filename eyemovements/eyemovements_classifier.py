@@ -1,189 +1,168 @@
 # Basic
-import numpy as np
-from itertools import chain
-from typing import List, Tuple
+import traceback
+import pandas as pd
+from typing import (List, Dict, Any)
+from pathlib import Path
+
+from helpers import read_json
+from config import init_config, config
+from eyemovements.ivdt_algorithm import IVDT
+from eyemovements.filtering import sgolay_filter_dataset
+from eyemovements.eyemovements_utils import get_sp_moves_dataset
+from eyemovements.eyemovements_estimator import EyemovementsEstimator
+from visualizations.visualization import visualize_eyemovements
+from data_utilities import (horizontal_align_data, groupby_session, interpolate_sessions)
+from eyemovements.eyemovements_metrics import all_metrics_list
+
+import logging_handler
+logger = logging_handler.get_logger(__name__)
 
 import warnings
 warnings.filterwarnings('ignore')
 
-from eyemovements.eyemovements_utils import (GazeState, GazeAnalyzer)
+implemented_algorithms = ['ivdt']
+available_modes = ['calibrate', 'run']
 
+class EyemovementsClassifier:
+    """
+    Main class of eye movements classification module.
+    It provides an opportunity to select `mode` of classification:
+        - calibrate - to select preferable thresholds for algorithms on small sample of data.
+                    Now, it is made by printing specific metrics (which?) and create visualizations as output.
+                    In such a way - hand-made estimation;
+        - run - to start classification on full available data;
+    Also it provides a choice of algorithm for classification:
 
-class IVDT(GazeAnalyzer):
+    """
 
-    def __init__(self, saccade_min_velocity: float,
-                 saccade_min_duration: float,
-                 saccade_max_duration: float, window_size: int,
-                 dispersion_threshold: float):
-        """
-        Set up parameters for fixation/saccade/sp detection
-        :param saccade_min_velocity: velocity threshold for saccade detection
-        :param saccade_min_duration: if less, then it is more likely tobe microsaccade
-        :param saccade_max_duration: if more, then end up saccade
-        :param window_size: size of sliding window
-        :param dispersion_threshold: threshold for sp and fixations separation
-        """
-        super().__init__()
-        self._saccade_min_duration = saccade_min_duration
-        self._saccade_min_velocity = saccade_min_velocity
-        self._saccade_max_duration = saccade_max_duration
-        self._window_size = window_size
-        self._dispersion_threshold = dispersion_threshold
+    def __init__(self,  mode: str, algorithm: str='ivdt',
+                 config_path: str='..\set_locations.ini'):
 
+        if mode not in available_modes:
+            logger.error(f"""Eye movements Classifier mode should be one from: {available_modes}.
+                         Given type {mode} is unrecognized.""")
+            raise NotImplementedError
 
-    def classify_eyemovements(self, gaze: np.ndarray,
-                              timestamps: np.ndarray,
-                              velocity: np.ndarray,
-                              **kwargs) -> Tuple[np.ndarray, List[float]]:
-        """
-        Get list of eye movements as fixations or saccades.
-        """
-        # if [2, n_samples] -> change to [n_samples, 2]
-        if gaze.shape[0] < gaze.shape[1]:
-            gaze = gaze.reshape(gaze.shape[1], gaze.shape[0])
-        n, m = gaze.shape
+        if algorithm not in implemented_algorithms:
+            logger.error(f"""Eye movements Classifier implements few algorithms: {implemented_algorithms}.
+                         Given algorithm type {algorithm} is unrecognized.""")
+            raise NotImplementedError
 
-        movements = np.zeros((n,), dtype=np.int32)  # all eye movements detected
-        stats = []
+        self._mode = mode
+        self._algorithm_name = algorithm
+        self._algorithm = None
+        self._model_params = {}
 
-        # detect saccades
-        detected_saccades = self.detect_saccades(timestamps, velocity)
-        cleaned_saccades = self.clean_short_saccades(detected_saccades, timestamps)
-        for i, m in enumerate(movements):
-            if i in list(chain.from_iterable(cleaned_saccades)):
-                movements[i] = GazeState.saccade
+        self._estimator = EyemovementsEstimator([metric() for metric in all_metrics_list])
+
+        # If config is not pre-initialized
+        if len(config.sections()) == 0:
+            # Read config and init config here
+            if Path(config_path).exists():
+                init_config(config_path)
             else:
-                movements[i] = GazeState.unknown
+                logger.error(f"No pre-initialized config given and no configuration file found at {config_path}.")
+                raise FileNotFoundError
 
-        start = 0  # current window start position
-        end = 0  # current window end position
-        fix_marked = False  # fixation found flag
-        window_size = self._window_size  # instantiate local variable (it can be changed!)
+        self.__init_algorithm()
 
-        # fixations and sp identification
-        while (end < len(gaze) - 1) and (start < len(gaze) - 1):
+    def __init_algorithm(self):
+        """
+        Creates instance of selected algorithm with given parameters.
+        :return: algorithm class object.
+        """
+        self._model_params = dict(read_json(config.get('EyemovementClassification', 'model_params')))
+        if self._algorithm_name == 'ivdt':
+            self._algorithm = IVDT(saccade_min_velocity=self._model_params.get('saccade_min_velocity'),
+                                   saccade_min_duration=self._model_params.get('min_saccade_duration_threshold'),
+                                   saccade_max_duration=self._model_params.get('max_saccade_duration_threshold'),
+                                   window_size=self._model_params.get('window_size'),
+                                   dispersion_threshold=self._model_params.get('dispersion_threshold'))
+        else:
+            logger.error(f"""Eye movements Classifier implements few algorithms: {implemented_algorithms}.
+                                     Given algorithm type {self._algorithm_name} is unrecognized.""")
+            raise NotImplementedError
 
-            # Calculation window
-            if (start == 0) or (start == end):  # first point
-                g = gaze[start: start + window_size]
-                end = start + window_size
+    def classify_eyemovements(self, data: pd.DataFrame,
+                              sp_only: bool = True, h_align: bool = True,
+                              estimate: bool = True,
+                              visualize: bool = True,
+                              to_save: bool = True, **kwargs) -> List[pd.DataFrame]:
+        """
+        Make eye movements classification in training or running mode.
+        :param data: dataframe with gaze data
+        :param sp_only: whether return only SP eye movents dataset
+        :param estimate: estimate quality of classification with special metrics
+        :param visualize: to output visualizations
+        :return: dataframe with SP moves only.
+        """
+        # Clean beaten sessions and interpolate lost values in gaze data
+        data = data.copy()
+        data = interpolate_sessions(data, "gaze_X", "gaze_Y")
 
-            elif fix_marked:  # last time found a fix, then take full new window
-                if (start + window_size) >= len(gaze):  # tail
-                    g = gaze[start:]
-                    window_size = len(gaze) - start - 1
-                    end = len(gaze)
+        # Grouping long-formed dataset by sessions
+        data = groupby_session(data)
+
+        # Filtering and taking derivatives
+        data = sgolay_filter_dataset(data, **dict(read_json(config.get("EyemovementClassification",
+                                                                       "filtering_params"))))
+        # Filtering
+        thresholds_dict = {'min_saccade_duration_threshold': self._model_params.get('min_saccade_duration_threshold'),
+                           'max_saccade_duration_threshold': self._model_params.get('max_saccade_duration_threshold'),
+                           'min_fixation_duration_threshold': self._model_params.get('min_fixation_duration_threshold'),
+                           'min_sp_duration_threshold': self._model_params.get('min_sp_duration_threshold')}
+
+        data = self._algorithm.get_eyemovements(data,
+                                                gaze_col=['filtered_X', 'filtered_Y'],
+                                                time_col='timestamps',
+                                                velocity_col='velocity_sqrt',
+                                                thresholds=thresholds_dict)
+
+        if estimate:
+            # kwargs: {"compare_with_all_SP", `averaging_strategy`, "amplitude_coefficient"}
+            metrics = self._estimator.estimate_dataset(data,
+                                                       compare_with_all_SP=kwargs.get('compare_with_all_SP', True),
+                                                       averaging_strategy=kwargs.get('averaging_strategy', 'macro'),
+                                                       amplitude_coefficient=kwargs.get('amplitude_coefficient', 0.33))
+            quality_report = self._estimator.report_quality(metrics)
+            logger.info(quality_report)
+
+        if sp_only:
+            data = get_sp_moves_dataset(data)
+
+        # Update difference using filtered gaze coordinates
+        if type(data) == list:
+            for d in data:
+                d['x_diff'] = d["stim_X"] - d["filtered_X"]
+                d['y_diff'] = d["stim_Y"] - d["filtered_Y"]
+        else:
+            data['x_diff'] = data["stim_X"] - data["filtered_X"]
+            data['y_diff'] = data["stim_Y"] - data["filtered_Y"]
+
+        if visualize:
+            try:
+                if type(data) == list:
+                    for i, d in enumerate(data):
+                        visualize_eyemovements(d, to_save=to_save, session_num=i)
                 else:
-                    g = gaze[start: start + window_size]
-                    end = start + window_size
-                # reset fix flg
-                fix_marked = False
+                    visualize_eyemovements(data, to_save=to_save)
+            except Exception as ex:
+                logger.error(f"""Error occurred while visualizing eye movements results:
+                             {traceback.print_tb(ex.__traceback__)}""")
+        if h_align:
+            data = horizontal_align_data(data,
+                                         grouping_cols=['user_id', 'session_id', 'stimulus_type', 'move_id'],
+                                         aligning_cols=['x_diff', 'y_diff']).reset_index().rename({"index": "sp_id"},
+                                                                                                  axis=1)
 
-            else:  # otherwize add one element from left side od array
-                if movements[start] != GazeState.saccade:
-                    g = np.append(g, gaze[start].reshape(1, 2), axis=0)
-                    end += 1
-
-            # Re-calc dispersion
-            dispersion = self.count_dispersion(g)
-            stats.append(dispersion)
-            # fixation
-            if dispersion < self._dispersion_threshold:
-                while (dispersion < self._dispersion_threshold) and (end + 1 < len(gaze)):
-                    end += 1
-                    g = np.append(g, gaze[end].reshape(1, 2), axis=0)
-                    dispersion = self.count_dispersion(g)
-                fix_marked = True
-                # mark as fixation
-                for i in range(start, end, 1):
-                    if (i < len(movements)) and (movements[i] != GazeState.saccade):
-                        movements[i] = GazeState.fixation
-                start = end
-            # sp
-            else:
-                # mark as sp
-                if movements[start] != GazeState.saccade:
-                    movements[start] = GazeState.sp
-                start += 1
-
-        return (movements, stats)
+        return data
 
 
-
-    def count_dispersion(self, gaze_points: np.ndarray):
+    def update_algorithm_parameters(self, updating_params: Dict[str, Any]):
         """
-        Get gaze_points as 2D arraty of x and y coordinates [n_samples, 2]
-        and return dispersion.
+        Update algorithm parameters and thresholds in configuration file.
+        :param updating_params:
+        :return:
         """
-        return (max(gaze_points[:, 0]) - min(gaze_points[:, 0])
-                + max(gaze_points[:, 1]) - min(gaze_points[:, 1]))
-
-
-    def clean_short_saccades(self, saccades_list: List[List[int]],
-                             timestamps: np.ndarray):
-        """
-        If in gaze row is small saccade (< 12 ms.), then
-        all poits of this saccade is discarded from future analysis.
-        """
-        return [move_idxs for move_idxs in saccades_list
-                if (timestamps[move_idxs[-1]] - timestamps[move_idxs[0]]) > self._saccade_min_duration]
-
-
-    def detect_saccades(self, timestamps: np.ndarray, velocity: np.ndarray):
-        """
-        Returns list of saccades.
-        """
-        all_saccades = []  # all detected saccades as movements
-        sac_start = 0  # number of points in the saccade
-        saccade = []  # single saccade indexes
-        curr_state = None
-        last_state = None
-
-        for i, (ts, v) in enumerate(zip(timestamps, velocity)):
-
-            # point mark as saccade
-            if v > self._saccade_min_velocity:
-                curr_state = "saccade"
-                # new saccade
-                if last_state != curr_state:
-                    sac_start = i
-                    saccade.append(sac_start)
-                    last_state = curr_state
-                else:
-                    # duration of saccade
-                    duration = ts - timestamps[sac_start]
-                    if duration > self._saccade_max_duration:
-                        # end up saccade
-                        saccade.append(i)
-                        all_saccades.append(saccade)
-                        saccade = []
-                        last_state = None
-                    else:
-                        saccade.append(i)
-                        last_state = curr_state
-            else:
-                if last_state == "saccade":
-                    # end up saccade
-                    all_saccades.append(saccade)
-                    saccade = []
-                    last_state = None
-
-        return all_saccades
-
-    # --------------- ACCESSORS --------------------
-
-    @property
-    def window_size(self):
-        return self._window_size
-
-    @window_size.setter
-    def window_size(self, ws: int):
-        self._window_size = ws
-
-    @property
-    def dispersion_threshold(self):
-        return self._dispersion_threshold
-
-    @dispersion_threshold.setter
-    def dispersion_threshold(self, ds: float):
-        self._dispersion_threshold = ds
+        # todo: implement
+        pass

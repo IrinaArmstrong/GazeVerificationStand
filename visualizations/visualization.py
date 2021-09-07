@@ -1,7 +1,6 @@
 # Basic
-import os
-import sys
-sys.path.insert(0, "..")
+import datetime
+from pathlib import Path
 
 import umap
 import numpy as np
@@ -18,18 +17,43 @@ from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_curve, auc
 
 from helpers import read_json
+from config import config
 
-def visualize_eyemovements(data: pd.DataFrame, fn: str,
-                           x_col: str="x", y_col: str="y",
-                           time_col: str='timestamps',
-                           color: str="movement_name"):
-    assert ((x_col in data.columns) and (y_col in data.columns)
-            and (color in data.columns) and (time_col in data.columns))
+import logging_handler
+logger = logging_handler.get_logger(__name__)
 
-    color_mapping = dict(read_json(os.path.join(sys.path[0], "settings", "color_mappings.json")))
-    data['color'] = data[color].apply(lambda x: color_mapping.get(x, "black"))
-    names_mapping = dict(read_json(os.path.join(sys.path[0], "settings", "eng_rus_names.json")))
-    data['rus_movements'] = data[color].apply(lambda x: names_mapping.get(x, "black"))
+
+def visualize_eyemovements(data: pd.DataFrame,
+                           to_save: bool = False, session_num: int = 0):
+    """
+    Visualize in simple scatter plot eye movements classification results.
+    Input data - is a DataFrame with time, x, y and classification labels
+    """
+    if not (("gaze_X" in data.columns) and ("gaze_Y" in data.columns)):
+        logger.error(f"Gaze X & Y columns do not exists in given data:\n{data.columns}")
+        raise AttributeError
+
+    if not ("movements_type" in data.columns):
+        logger.error(f"`movements_type` column do not exists in given data:\n{data.columns}")
+        raise AttributeError
+
+    if not ("timestamps" in data.columns):
+        logger.error(f"`timestamps` column do not exists in given data:\n{data.columns}")
+        raise AttributeError
+
+    settings_dir = Path(config.get("Basic", "settings_dir"))
+    if not settings_dir.exists():
+        logger.error(f"Settings dir do not exist by path: {settings_dir}")
+        raise FileNotFoundError
+
+    if not (settings_dir / "color_mappings.json").exists() or not (settings_dir / "eng_rus_names.json").exists():
+        logger.error(f"Settings files for visualizations do not exist by path: {settings_dir}")
+        raise FileNotFoundError
+
+    color_mapping = dict(read_json(str(settings_dir / "color_mappings.json")))
+    data['color'] = data["movements_type"].apply(lambda x: color_mapping.get(x, "black"))
+    names_mapping = dict(read_json(str(settings_dir / "eng_rus_names.json")))
+    data['rus_movements'] = data["movements_type"].apply(lambda x: names_mapping.get(x, "black"))
 
     fig = make_subplots(
         rows=2, cols=2,
@@ -41,24 +65,24 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
         subplot_titles=("Взгляд, координата Х", "Взгляд, координата Y", "Взгляд, координаты X-Y")
     )
 
-    min_ts = np.min(data[time_col])
+    min_ts = np.min(data["timestamps"])
     for movement_type, df in data.groupby(by='rus_movements'):
-        fig.add_trace(go.Scatter(x=df[time_col] - min_ts,
-                                 y=df[x_col],
+        fig.add_trace(go.Scatter(x=df["timestamps"] - min_ts,
+                                 y=df["gaze_X"],
                                  mode='markers',
                                  marker_color=df['color'],
                                  name=movement_type,
                                  showlegend=False), row=1, col=1)
 
-        fig.add_trace(go.Scatter(x=df[time_col] - min_ts,
-                                 y=df[y_col],
+        fig.add_trace(go.Scatter(x=df["timestamps"] - min_ts,
+                                 y=df["gaze_Y"],
                                  mode='markers',
                                  marker_color=df['color'],
                                  name=movement_type,
                                  showlegend=False), row=1, col=2)
 
-        fig.add_trace(go.Scatter(x=df[x_col],
-                                 y=df[y_col],
+        fig.add_trace(go.Scatter(x=df["gaze_X"],
+                                 y=df["gaze_Y"],
                                  mode='markers',
                                  marker_color=df['color'],
                                  name=movement_type), row=2, col=1)
@@ -71,7 +95,20 @@ def visualize_eyemovements(data: pd.DataFrame, fn: str,
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
 
-    plotly.offline.plot(fig, filename='../output/'+ fn + '.html')
+    if to_save:
+        if not Path(config.get("Basic", "output_dir")).exists():
+            logger.info(f"Output dir is not exists. Creating at {config.get('Basic', 'output_dir')}...")
+            Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
+
+        fn = f"eyemovements_visualization_from_{datetime.datetime.now().strftime('%Y-%m-%d_%H:%M')}.html"
+        # If file with this name already exists -> previous session of current experiment
+        if (Path(config.get("Basic", "output_dir")) / fn).exists():
+            fn = fn.split(".")[0] + f"_sess_{session_num}" + fn.split(".")[-1]
+        fig.write_html(file=str(Path(config.get("Basic", "output_dir")) / fn), include_plotlyjs=False)
+        fig.show()
+        logger.info(f"Visualizations file successfully saved to: {str(Path(config.get('Basic', 'output_dir')) / fn)}")
+    else:
+        fig.show()
 
 
 def visualize_quality(y_true, y_pred, y_pred_probas):
@@ -104,7 +141,12 @@ def _plot_roc_curve(y_true, y_pred_probas):
             b=100,
             t=100,
             pad=4))
-    plotly.offline.plot(fig, filename='./output/roc_curve.html')
+
+    if ~Path(config.get("Basic", "output_dir")).exists():
+        logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
+        Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
+
+    plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / 'roc_curve.html'))
 
 
 def _plot_confusion_matrix(y_true, y_pred):
@@ -153,11 +195,17 @@ def _plot_confusion_matrix(y_true, y_pred):
             b=100,
             t=100,
             pad=4))
-    plotly.offline.plot(fig, filename='./output/confusion_matrix.html')
+
+    if ~Path(config.get("Basic", "output_dir")).exists():
+        logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
+        Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
+
+    plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / 'confusion_matrix.html'))
 
 
 def reduce_dim_embeddings_UMAP(embeddings: np.ndarray,
                                n_neighbors: int=15, dim=2):
+    # todo: move to separate file
     umap_model = umap.UMAP(n_neighbors=n_neighbors,
                            min_dist=0., n_components=dim)
     return umap_model.fit_transform(embeddings)
@@ -175,7 +223,12 @@ def plot_embeddings_2D(embeddings: np.ndarray, targets: np.ndarray):
     fig.update_layout(legend_title_text='Принадлежность движений',
                       legend=dict(font=dict(family="Arial", size=12)))
     fig.update_layout(showlegend=True)
-    plotly.offline.plot(fig, filename='./output/embeddings.html')
+
+    if ~Path(config.get("Basic", "output_dir")).exists():
+        logger.info(f"Output dir is nor exists. Creating at {config.get('Basic', 'output_dir')}...")
+        Path(config.get("Basic", "output_dir")).mkdir(parents=True, exist_ok=True)
+
+    plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / 'embeddings.html'))
 
 
 def visualize_training_process(loss_fn: str):
@@ -215,3 +268,4 @@ def visualize_training_process(loss_fn: str):
 
     fig.update_layout(showlegend=True)
     plotly.offline.plot(fig, filename=f'./output/loss_plot_{loss_fn.split("/")[-1].split(".")[0]}.html')
+

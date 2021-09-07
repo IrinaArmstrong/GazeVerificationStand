@@ -1,11 +1,19 @@
 # Basic
+import traceback
 import numpy as np
+import pandas as pd
 from itertools import chain
-from abc import ABC, abstractmethod
-from typing import (List, Dict, Any, Tuple)
+from scipy.spatial.distance import euclidean
+from typing import (List, Dict, Any, Tuple, TypeVar, Union, Iterable)
 
 import warnings
 warnings.filterwarnings('ignore')
+
+import logging_handler
+logger = logging_handler.get_logger(__name__)
+
+GazeAnalyzerType = TypeVar("GazeAnalyzerType", bound='GazeAnalyzer')
+GazeStateType = TypeVar("GazeStateType", bound="GazeState")
 
 
 class GazeState:
@@ -23,20 +31,6 @@ class GazeState:
     def decode(cls, attr_num: int):
         attr_name = [key for key, val in dict(GazeState.__dict__).items() if val == attr_num]
         return attr_name[0] if len(attr_name) > 0 else "unknown"
-
-
-
-class GazeAnalyzer(ABC):
-
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def classify_eyemovements(self, gaze: np.ndarray,
-                              timestamps: np.ndarray,
-                              velocity: np.ndarray,
-                              **kwargs) -> np.ndarray:
-        pass
 
 
 def get_movement_indexes(movements: np.ndarray,
@@ -59,7 +53,30 @@ def get_movement_indexes(movements: np.ndarray,
         list_i.append(i)
     if len(list_i) > 0:
         indexes.append(list_i)
+    if len(indexes) == 0:
+        logger.warning(f"No {GazeState.decode(movement_type)} type detected.")
+        return []
     return indexes
+
+
+def get_sp_moves_dataset(data: List[pd.DataFrame]) -> pd.DataFrame:
+    """
+    Select from given data only SP moves and forms dataset.
+    :param data: classified data
+    :return: dataframe with only SP moves.
+    """
+    sps = []
+    for df in data:
+        moves_sp = get_movement_indexes(df['movements'], GazeState.sp)
+        if len(moves_sp) > 0:
+            for sp_ids in moves_sp:
+                sps.append(df.iloc[sp_ids])
+    for i, sp_df in enumerate(sps):
+        sp_df.loc[:, 'move_id'] = i
+
+    logger.info(f"In classified sessions there are {len(sps)} with total length: {np.sum([len(s) for s in sps])} SP.")
+    sps = pd.concat(sps, ignore_index=True)
+    return sps
 
 
 def clean_short_movements(movements: np.ndarray,
@@ -75,10 +92,9 @@ def clean_short_movements(movements: np.ndarray,
     moves = get_movement_indexes(movements, movements_type)
 
     for move_idxs in moves:
-        # print(f"Movement length: {len(move_idxs)} from session length: {timestamps.shape[0]}")
         try:
             if (timestamps[move_idxs[-1]] - timestamps[move_idxs[0]]) < threshold_clean:
-                print(f"[INFO-FILTER]: found too small {GazeState.decode(movements_type)}: {move_idxs}!")
+                logger.info(f"Found too small {GazeState.decode(movements_type)}: {move_idxs}")
                 prev_type = movements[move_idxs[0] - 1] if (move_idxs[0] - 1) > 0 else move_idxs[0]
                 post_type = movements[move_idxs[-1] + 1] if (move_idxs[-1] + 1) < len(movements) else move_idxs[-1]
                 if prev_type == post_type:
@@ -86,7 +102,7 @@ def clean_short_movements(movements: np.ndarray,
                 else:
                     movements[move_idxs] = GazeState.unknown
         except Exception as e:
-            print(f"Error occured: {e}")
+            print(f"Error occurred: {traceback.print_tb(e.__traceback__)}")
 
     return movements
 
@@ -113,7 +129,7 @@ def merge_consecutive_movements(movements: np.ndarray,
 
 
 def filter_errors(movements: np.ndarray,
-                  valid_flgs: np.ndarray) -> np.ndarray:
+                  valid_flgs: np.ndarray) -> Union[Iterable, tuple]:
     """
     Filter erroneous data samples.
     :param movements: list or array-like
@@ -146,6 +162,49 @@ def filter_arrays(data: Dict[str, Any], mask: List[int]) -> Dict[str, Any]:
     """
     _ = [data.update({key: val[mask]}) for key, val in data.items() if type(val) == np.ndarray]
     return data
+
+
+def get_previous_saccade(movements: np.ndarray,
+                         fix_start_index: int) -> List[int]:
+    """
+    Select previous saccade movement (before current fixation)
+    :return: previous saccade indexes in given eye movements.
+    """
+    i = fix_start_index - 1
+    saccade = []
+    while i >= 0:
+        # yet another point to saccade
+        if movements[i] == GazeState.saccade:
+            saccade.append(i)
+            i -= 1
+        # found saccade ended, return
+        elif (movements[i] != GazeState.saccade) and (len(saccade) > 0):
+            return saccade
+        else:
+            i -= 1
+    logger.info("No saccades were found in eye movements")
+    return list(reversed(saccade))
+
+
+def get_movement_for_index(index: int,
+                           movements: np.ndarray) -> List[int]:
+    """
+    Get full movement indexes for given single point of eye movement (as index).
+    """
+    state = movements[index]
+    prev_state = state
+    start_index, end_index = index, index
+
+    while (prev_state == state) and (start_index >= 0):
+        start_index -= 1
+        prev_state = movements[start_index]
+
+    prev_state = movements[index]
+    while (prev_state == state) and (end_index < (len(movements) - 1)):
+        end_index += 1
+        prev_state = movements[end_index]
+
+    return list(range(start_index + 1, end_index, 1))
 
 
 def x_axis_angle(point_start: Tuple[float, float],
@@ -204,6 +263,7 @@ def get_amplitude_and_angle(gaze: np.ndarray) -> List[float]:
             radians = np.pi + radians
     return [amplitude, radians]
 
+
 def get_path_and_centroid(gaze: np.ndarray) -> List[float]:
     """
     Calculate centroid and _path length.
@@ -230,3 +290,10 @@ def get_path_and_centroid(gaze: np.ndarray) -> List[float]:
     return [distance, center_x, center_y]
 
 
+def get_closest_centroid(centroid: List[float],
+                         centroids_list: List[List[float]]):
+    """
+    ???
+    """
+    dists = [euclidean(centroid, cc) for cc in centroids_list]
+    return np.argmax(dists), np.max(dists)
