@@ -23,27 +23,28 @@ class VerificationStand:
     def __init__(self, config_path: str):
         self._config_path = config_path
         init_config(config_path)
+        self.__available_modes = ['train', 'run']
         self._model = None
         self._trainer = Trainer()
 
-
-    def run(self, mode: str) -> Union[None, Dict[str, Any]]:
+    def run(self, mode: str):
         """
         Entry point for running model.
         :param mode: mode of run - 'train' or 'run'
         :return:
         """
-        assert mode in ['train', 'run']
+        if mode not in self.__available_modes:
+            logger.error(f"Selected mode was not recognized. Choose one from available: {self.__available_modes}")
         if mode == 'train':
+            logger.info(f"Running `train` mode of stand...")
             self._run_train()
         else:
+            logger.info(f"Running `verification` (`run`) mode of stand...")
             self._run_verification()
 
-
-    def _run_train(self) -> NoReturn:
+    def _run_train(self):
         """
         Training of model.
-        :return: -
         """
         # Creating dataset
         dataset = datasets.TrainDataset(config.get('DataPaths', 'train_data'))
