@@ -134,7 +134,7 @@ class TrainDataset:
         """
         Create users based on metadata files provided in configuration data directory.
         """
-        meta_files = self._path.glob("*metadata.txt")
+        meta_files = list(self._path.glob("*metadata.txt"))
         if len(meta_files) == 0:
             logger.error(f"No metadata files found in data directory: {str(self._path)}")
             raise FileNotFoundError(f"No metadata files found in data directory: {str(self._path)}")
@@ -204,6 +204,12 @@ class TrainDataset:
             logger.error(f"User index: {user_id} out of range of available users: {self._users_ids}")
             return None
 
+    def get_users(self) -> List[User]:
+        """
+        Get all users provided in data.
+        """
+        return self._users
+
     def create_dataset(self) -> Union[pd.DataFrame, None]:
         sess_df = []
         for i, sess in tqdm(enumerate(self._sessions), total=len(self._sessions)):
@@ -229,75 +235,159 @@ class RunDataset:
 
     def __init__(self, owner_path: str, others_path: str,
                  estimate_quality: bool):
-        self._owner_path = owner_path
-        self._others_path = others_path
+
+        self._current_dir = Path().resolve()
+
+        self._owner_path = Path(owner_path).resolve()
+        if not self._owner_path.exists():
+            logger.error(f"Provided in configuration owner data path do not exists: {self._owner_path}")
+            logger.error(f"Check it and try again.")
+            raise FileNotFoundError(f"Provided in configuration owner data path do not exists: {self._owner_path}")
+
+        self._others_path =  Path(others_path).resolve()
+        if not self._others_path.exists():
+            logger.error(f"Provided in configuration owner data path do not exists: {self._others_path}")
+            logger.error(f"Check it and try again.")
+            raise FileNotFoundError(f"Provided in configuration owner data path do not exists: {self._others_path}")
+
         self._estimate_quality = estimate_quality
-        self._selected_columns = pd.read_csv(config.get("DataPaths", "selected_columns"), header = 0,
-                                             index_col = 0, squeeze = True).to_list()
+        # todo: change to simple selected_columns.txt file
+        self._selected_columns = pd.read_csv(config.get("DataPaths", "selected_columns"), header=0,
+                                             index_col=0, squeeze=True).to_list()
         self._owner = self.__create_owner()
         self._others, self._users_targets = self.__create_others()
         self._others_sessions, self._sessions_targets = self.__create_sessions()
 
-
     def __create_owner(self):
-        meta_file = glob.glob(self._owner_path + "\\*metadata.txt")
-        if len(meta_file) > 1:
-            raise ValueError("Более чем один файл, идентифицирующий владельца!",
-                             "\nВыберете один и попробуйте снова.")
-        mdf = pd.read_csv(meta_file[0], delimiter=";", encoding="Windows-1251",
+        """
+        Create `owner` i.e. the person whom we want to verify.
+        """
+        meta_file = list(self._owner_path.glob("*metadata.txt"))
+        if len(meta_file) == 0:
+            logger.error(f"No metadata files found in data directory: {str(self._owner_path)}")
+            raise FileNotFoundError(f"No metadata files found in data directory: {str(self._owner_path)}")
+        elif len(meta_file) > 1:
+            logger.error(f"More then singe file identifying gaze owner found in: {str(self._owner_path)}")
+            logger.error(f"Found files: {[str(m) for m in meta_file]}")
+            raise ValueError("More then singe file identifying gaze owner. Select one and try again.")
+        else:
+            meta_file = str(meta_file[0])  # select one
+
+        mdf = pd.read_csv(meta_file, delimiter="\t", encoding="Windows-1251",
                           header=None, names=['name'])
         mdf['name'] = mdf['name'].str.replace('\t', ' ', regex=True)
         mdf['name'] = mdf['name'].str.strip()
-        mdf['filename'] = meta_file[0]
+        mdf['filename'] = meta_file
         mdf['user_id'] = 1
-        return User(user_id=1, user_name=mdf['name'].values[0], sessions_fns=mdf['filename'].to_list())
-
+        try:
+            owner = User(user_id=1, user_name=mdf['name'].values[0], sessions_fns=mdf['filename'].to_list())
+        except Exception as ex:
+            logger.error(f"Error occurred during creation owner user with file #{meta_file}")
+            logger.error(f"{traceback.print_tb(ex.__traceback__)}")
+        return owner
 
     def __create_others(self):
-        # If _estimate_quality - then we know target values
-        # so create users with their real ids
+        """
+        Creates a test users based on whether we know the target variable of the sessions or not.
+        If self._estimate_quality - then we know target values, so create users with their real ids
+        otherwise - mark them all as single user and assume target variable as 0.
+        """
         if self._estimate_quality:
-            meta_files = glob.glob(self._others_path + "\\*metadata.txt")
+
+            meta_files = list(self._others_path.glob("*metadata.txt"))
+            if len(meta_files) == 0:
+                logger.error(f"No metadata files found in verifiable users data directory: {str(self._others_path)}")
+                raise FileNotFoundError(f"No metadata files found in verifiable users data directory.")
+
             meta_df = []
             for mfn in meta_files:
-                mdf = pd.read_csv(mfn, delimiter=";", encoding="Windows-1251",
-                                  header=None, names=['name'])
-                mdf['name'] = mdf['name'].str.replace('\t', ' ', regex=True)
-                mdf['name'] = mdf['name'].str.strip()
-                mdf['filename'] = mfn
-                meta_df.append(mdf)
-            meta_df = pd.concat(meta_df).groupby(by='name').agg({'filename': lambda x: list(x)}).reset_index()
+                try:
+                    mdf = pd.read_csv(str(mfn), delimiter="\t", encoding="Windows-1251",
+                                      header=None, error_bad_lines=False).transpose()
+                    mdf.columns = mdf.iloc[0]
+                    mdf = mdf.drop(labels=0, axis=0).dropna(how='all')
+                    mdf['filename'] = str(mfn)
+                    meta_df.append(mdf)
+                except Exception as ex:
+                    logger.error(f"""Exception occurred during reading metadata file: {str(mfn)}\n
+                                        {traceback.print_tb(ex.__traceback__)}""")
+            if len(meta_df) == 0:
+                logger.error(f"No metadata files read successfully. Check parameters and data formats.")
+                raise FileNotFoundError(f"No metadata files read successfully.")
+
+            # todo: Check here with try: except:
+            meta_df = pd.concat(meta_df).reset_index(drop=True)
+            meta_df['full_name'] = (
+                        meta_df['last_name'].fillna("") + " " + meta_df['first_name'].fillna("")).str.strip()
+            meta_df['full_name'] = meta_df['full_name'].apply(lambda x: x.replace(r"  ", r" "))
+            meta_df['session_filename'] = meta_df.filename.apply(lambda x: ("_".join(x.split("_")[:-1]) + ".csv"))
+            meta_df['user_id'] = meta_df.full_name.replace(to_replace={u: i for i, u
+                                                                       in enumerate(meta_df.full_name.unique())})
+
+            # meta_df = pd.concat(meta_df).groupby(by='full_name').agg({'session_filename':
+            #                                                               lambda x: list(x)}).reset_index()
             meta_df['user_id'] = np.arange(0, len(meta_df))
-            users = [User(user_id=row['user_id'], user_name=row['name'], sessions_fns=row['filename'])
-                     for i, row in meta_df[['user_id', 'name', 'filename']].iterrows()]
-            users_targets = [1 if user == self._owner else 0 for user in users]
+
+            users = []
+            for i, row in meta_df[['user_id', 'full_name', 'session_filename']].iterrows():
+                try:
+                    u = User(user_id=row['user_id'], user_name=row['full_name'], sessions_fns=row['session_filename'])
+                    users.append(u)
+                except Exception as ex:
+                    logger.error(f"Error occurred during creation user: {traceback.print_tb(ex.__traceback__)}")
+
+            if len(users) == 0:
+                logger.error(f"No user was created successfully. Check parameters and data formats.")
+                return users, []
+
+            users_targets = [1 if u == self._owner else 0 for u in users]
+            logger.info(f"Found {users_targets.count(1)} sessions that belongs verified user and {users_targets.count(0)} other's sessions. ")
             return users, users_targets
-        # Otherwise all ids are 0 and user is "Unknown"
+
+        # Otherwise we do not know who's files are
         else:
-            data_files = glob.glob(self._others_path + "\\*.csv")
-            users = [User(user_id=0, user_name="Unknown", sessions_fns=data_files)]
-            users_targets = [0]
+            data_files = [str(fn) for fn in list(self._others_path.glob("*.csv"))]
+            try:
+                # all ids are 0 and user is "Unknown"
+                users = [User(user_id=0, user_name="Unknown", sessions_fns=data_files)]
+            except Exception as ex:
+                logger.error(f"Error occurred during creation user: {traceback.print_tb(ex.__traceback__)}")
+                raise FileNotFoundError(f"No user was created successfully. Check parameters and data formats.")
+
+            users_targets = [0]  # all targets are set to 0
             return users, users_targets
 
-
-    def __create_sessions(self):
+    def __create_sessions(self) -> Tuple[List[Session], List[int]]:
+        """
+        Create other users sessions and their targets.
+        """
         if self._estimate_quality:
             sessions = []
             sessions_targets = []
-            for user, target in zip(self._others, self._users_targets):
-                for sess_num in range(user.get_num_sessions()):
-                    sessions.append(user.get_session(sess_num))
+            for u, target in zip(self._others, self._users_targets):
+                for sess in u.get_sessions():
+                    sessions.append(sess)
                     sessions_targets.append(target)
-            return [sessions, sessions_targets]
+            return sessions, sessions_targets
         else:
-            return [[self._others[0].get_session(sess_num) for sess_num in range(self._others[0].get_num_sessions())],
-                    [0] * self._others[0].get_num_sessions()]
+            return self._others[0].get_sessions(), [0] * self._others[0].get_num_sessions()
 
+    def get_owner(self) -> User:
+        return self._owner
+
+    def get_others(self) -> List[User]:
+        return self._others
 
     def get_owner_data(self) -> pd.DataFrame:
+        """
+        Get owner gaze datset.
+        """
         return self._owner.get_session(0).get_gaze_data()[self._selected_columns]
 
     def get_others_data(self) -> pd.DataFrame:
+        """
+        Get other users joint gaze dataset.
+        """
         sess_df = []
         for i, (sess, sess_targ) in tqdm(enumerate(zip(self._others_sessions, self._sessions_targets)),
                                          total=len(self._others_sessions)):
@@ -305,9 +395,11 @@ class RunDataset:
             sess_part_df['session_id'] = i
             sess_part_df['session_target'] = sess_targ
             sess_df.append(sess_part_df)
+
         if self._estimate_quality:
             self._selected_columns += ['session_target']
         sess_df = pd.concat(sess_df, axis=0)[self._selected_columns]
+        logger.info(f"Other users dataset of shape: {sess_df.shape}")
         return sess_df
 
 

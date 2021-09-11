@@ -46,10 +46,8 @@ def create_config(fn: str) -> NoReturn:
     config.set("Preprocessing", "processing_params", str(current_dir / 'settings' / "processing_params.json"))
 
     config.add_section("GazeVerification")
-    config.set("GazeVerification", "model_params",
-               "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\settings\\model_params.json")
-    config.set("GazeVerification", "verification_params",
-               "C:\\Users\\airen\\Projects\\EyeGazeTesting\\Verification Task\\GazeVerificationStand\\settings\\verification_params.json")
+    config.set("GazeVerification", "model_params", str(current_dir / 'settings' / "model_params.json"))
+    config.set("GazeVerification", "verification_params", str(current_dir / 'settings' / "verification_params.json"))
 # =======
 #     config.set("GazeVerification", "model_params", str(current_dir / 'settings' / "model_params.json"))
 #     config.set("GazeVerification", "pretrained_model_location", str(current_dir / "models_checkpoints"))
