@@ -1,4 +1,5 @@
-{"saccade_min_velocity": 4.5,
+{ "classifier_algorithm": "ivdt",
+  "saccade_min_velocity": 4.5,
   "dispersion_threshold": 5,
   "window_size": 10,
   "min_saccade_duration_threshold": 0.0002,

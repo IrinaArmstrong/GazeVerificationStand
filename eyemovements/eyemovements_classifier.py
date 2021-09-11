@@ -1,7 +1,7 @@
 # Basic
 import traceback
 import pandas as pd
-from typing import (List, Dict, Any)
+from typing import (List, Dict, Any, Union)
 from pathlib import Path
 
 from helpers import read_json
@@ -35,21 +35,15 @@ class EyemovementsClassifier:
 
     """
 
-    def __init__(self,  mode: str, algorithm: str='ivdt',
-                 config_path: str='..\set_locations.ini'):
+    def __init__(self,  mode: str, config_path: str='..\set_locations.ini'):
 
         if mode not in available_modes:
             logger.error(f"""Eye movements Classifier mode should be one from: {available_modes}.
                          Given type {mode} is unrecognized.""")
             raise NotImplementedError
 
-        if algorithm not in implemented_algorithms:
-            logger.error(f"""Eye movements Classifier implements few algorithms: {implemented_algorithms}.
-                         Given algorithm type {algorithm} is unrecognized.""")
-            raise NotImplementedError
-
         self._mode = mode
-        self._algorithm_name = algorithm
+        self._algorithm_name = None
         self._algorithm = None
         self._model_params = {}
 
@@ -72,6 +66,13 @@ class EyemovementsClassifier:
         :return: algorithm class object.
         """
         self._model_params = dict(read_json(config.get('EyemovementClassification', 'model_params')))
+        self._algorithm_name = self._model_params.get('classifier_algorithm', 'ivdt')
+
+        if self._algorithm_name not in implemented_algorithms:
+            logger.error(f"""Eye movements Classifier implements few algorithms: {implemented_algorithms}.
+                         Given algorithm type {self._algorithm_name} is unrecognized.""")
+            raise NotImplementedError(f"Given algorithm type {self._algorithm_name} is unrecognized.")
+
         if self._algorithm_name == 'ivdt':
             self._algorithm = IVDT(saccade_min_velocity=self._model_params.get('saccade_min_velocity'),
                                    saccade_min_duration=self._model_params.get('min_saccade_duration_threshold'),
@@ -81,13 +82,14 @@ class EyemovementsClassifier:
         else:
             logger.error(f"""Eye movements Classifier implements few algorithms: {implemented_algorithms}.
                                      Given algorithm type {self._algorithm_name} is unrecognized.""")
-            raise NotImplementedError
+            raise NotImplementedError(f"Given algorithm type {self._algorithm_name} is unrecognized.")
 
     def classify_eyemovements(self, data: pd.DataFrame,
-                              sp_only: bool = True, h_align: bool = True,
+                              sp_only: bool = True,
+                              concat_n_align: bool = True,
                               estimate: bool = True,
                               visualize: bool = True,
-                              to_save: bool = True, **kwargs) -> List[pd.DataFrame]:
+                              to_save: bool = True, **kwargs) -> Union[pd.DataFrame, List[pd.DataFrame]]:
         """
         Make eye movements classification in training or running mode.
         :param data: dataframe with gaze data
@@ -149,7 +151,7 @@ class EyemovementsClassifier:
             except Exception as ex:
                 logger.error(f"""Error occurred while visualizing eye movements results:
                              {traceback.print_tb(ex.__traceback__)}""")
-        if h_align:
+        if concat_n_align:
             data = horizontal_align_data(data,
                                          grouping_cols=['user_id', 'session_id', 'stimulus_type', 'move_id'],
                                          aligning_cols=['x_diff', 'y_diff']).reset_index().rename({"index": "sp_id"},

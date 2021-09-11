@@ -99,7 +99,7 @@ class TestEyemovementsModule(unittest.TestCase):
         cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
         classified = cls.classify_eyemovements(self.train_dataset,
                                                sp_only=False,
-                                               h_align=False,
+                                               concat_n_align=False,
                                                visualize=False,
                                                estimate=False)
         estim = EyemovementsEstimator([metric() for metric in all_metrics_list])
@@ -123,7 +123,7 @@ class TestEyemovementsModule(unittest.TestCase):
         cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
         classified = cls.classify_eyemovements(self.train_dataset,
                                                sp_only=False,
-                                               h_align=False,
+                                               concat_n_align=False,
                                                visualize=False,
                                                estimate=False)
         estim = EyemovementsEstimator([metric() for metric in all_metrics_list])
@@ -139,14 +139,12 @@ class TestEyemovementsModule(unittest.TestCase):
         self.assertTrue(len(result[0]) > 0)  # metrics dict is not empty
         logger.info(f"Estimate result:\n{result}")
 
-
     def test_classifier_constrains(self):
         """
         Test correctness of eye movements classifier exceptions raising.
         """
         self.assertRaises(NotImplementedError, EyemovementsClassifier, {'mode': 'any', "algorithm": 'ivdt'})
         self.assertRaises(NotImplementedError, EyemovementsClassifier, {"mode": 'run', "algorithm": 'ivvt'})
-
 
     def test_full_pipeline_no_options(self):
         """
@@ -164,7 +162,7 @@ class TestEyemovementsModule(unittest.TestCase):
         cls = EyemovementsClassifier(mode='calibrate', algorithm='ivdt')
         classified = cls.classify_eyemovements(self.train_dataset,
                                                sp_only=False,
-                                               h_align=False,
+                                               concat_n_align=False,
                                                visualize=False,
                                                estimate=False)
         # classified[0].to_csv(Path(config.get("Basic", "output_dir")) / "eyemovements_test_output_df.csv", sep=';')

@@ -1,6 +1,8 @@
-import pandas as pd
+import gc
 import numpy as np
-from typing import (NoReturn, Union, Dict, Any, Tuple, List)
+import pandas as pd
+
+from typing import (Union, Dict, Any, Tuple, List)
 
 import datasets
 from helpers import read_json
@@ -20,12 +22,14 @@ logger = logging_handler.get_logger(__name__)
 
 class VerificationStand:
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, **kwargs):
         self._config_path = config_path
         init_config(config_path)
         self.__available_modes = ['train', 'run']
         self._model = None
         self._trainer = Trainer()
+        self._eyemovements_classifier = EyemovementsClassifier(mode=kwargs.get('mode', 'calibrate'),
+                                                               config_path=config_path)
 
     def run(self, mode: str):
         """
@@ -50,9 +54,11 @@ class VerificationStand:
         dataset = datasets.TrainDataset(config.get('DataPaths', 'train_data'))
         data = dataset.create_dataset()
         del dataset
+        logger.debug(f"Cleaned {gc.collect()} bytes.")
 
         # Make eye movements classification
-        data = run_eyemovements_classification(data, is_train=True, do_estimate_quality=True)
+        data = self._eyemovements_classifier.classify_eyemovements(data, sp_only=True, concat_n_align=True,
+                                                                   visualize=False, estimate=True)
 
         # Pre-process and normalize gaze
         data = restructure_gaze_data(data, is_train=True, params_path=config.get('Preprocessing', 'processing_params'))

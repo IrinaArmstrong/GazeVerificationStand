@@ -1,8 +1,11 @@
 import os
 import joblib
+import datetime
+import traceback
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from pathlib import Path
 from itertools import chain
 from typing import (List, Union, Dict, Any)
 from sklearn.preprocessing import StandardScaler
@@ -95,25 +98,27 @@ def split_dataset(dataset: pd.DataFrame, label_col_name: str,
     :param max_seq_len: splitting length;
     :return: list of splitted samples with new ids(==guid).
     """
+    logger.info(f"Splitting data of shape: {dataset.shape[0]}")
+
     data = []
     guid_cnt = 0
-    for i, (label, xy) in tqdm(enumerate(zip(dataset[label_col_name].values,
-                                             dataset.filter(regex=("[\d]+")).values))):
+    for i, (label, xy) in enumerate(zip(dataset[label_col_name].values,
+                                             dataset.filter(regex=("[\d]+")).values)):
         xy = xy[~np.isnan(xy)]  # not nan values
 
         if len(xy) >= max_seq_len:
-            for i in range(len(xy) // (max_seq_len)):
-                if len(xy[i * max_seq_len: (i + 1) * max_seq_len]) > 0.85 * max_seq_len:
+            for j in range(len(xy) // max_seq_len):
+                if len(xy[j * max_seq_len: (j + 1) * max_seq_len]) > 0.85 * max_seq_len:
                     guid_cnt += 1
                     data.append({"guid": guid_cnt,
-                                 "data": xy[i * max_seq_len: (i + 1) * max_seq_len],
+                                 "data": xy[j * max_seq_len: (j + 1) * max_seq_len],
                                  "label": label})
         elif len(xy) > 0.85 * max_seq_len:
             guid_cnt += 1
             data.append({'guid': guid_cnt,
                          'data': xy,
                          'label': label})
-
+    logger.info(f"Data splitted to {len(data)} samples with maximum length {max_seq_len}")
     return data
 
 
@@ -123,6 +128,8 @@ def pad_dataset(data: List[Dict[str, Any]], max_seq_len: int,
     Pad each of data samples to equal length (max_seq_len)
     with given symbol (pad_symbol).
     """
+    logger.info(f"Padding data of shape: {len(data)} to {max_seq_len} observations each.")
+
     ret_data = []
     try:
         for _ in range(len(data)):
@@ -135,9 +142,11 @@ def pad_dataset(data: List[Dict[str, Any]], max_seq_len: int,
                                  'label': data_pair['label']})
             else:
                 ret_data.append(data_pair)
-    except:
-        logger.warning("Data list ended.")
+
+    except Exception as ex:
+        logger.warning(f"Data list ended: {traceback.print_tb(ex.__traceback__)}")
     del data
+
     return ret_data
 
 
@@ -145,6 +154,8 @@ def truncate_dataset(data: List[Dict[str, Any]], max_seq_len: int) -> List[Dict[
     """
     Truncates given data samples each to equal size.
     """
+    logger.info(f"Truncating data of shape: {len(data)} to {max_seq_len} observations each.")
+
     ret_data = []
     try:
         for _ in range(len(data)):
@@ -155,20 +166,23 @@ def truncate_dataset(data: List[Dict[str, Any]], max_seq_len: int) -> List[Dict[
                                  'label': data_pair['label']})
             else:
                 ret_data.append(data_pair)
-    except:
-        logger.warning("Data list ended.")
+    except Exception as ex:
+        logger.warning(f"Data list ended: {traceback.print_tb(ex.__traceback__)}")
     del data
+
     return ret_data
 
 
 def interpolate_sessions(sessions: pd.DataFrame, x: str, y: str,
-                         beaten_ratio: float=30, min_length: int=500,
-                         verbose: bool = True) -> pd.DataFrame:
+                         beaten_ratio: float = 30, min_length: int = 500) -> pd.DataFrame:
     """
     Clear missing data to make correct filtration.
     (Disable its effect on filtration).
     """
+    logger.info(f"Interpolating erroneous observations in data")
+
     sessions['bad_sample'] = sessions.apply(lambda row: 1 if (row[x] < 0 and row[y] < 0) else 0, axis=1)
+    logger.info(f"{sessions['bad_sample'].sum()} erroneous observations detected in data")
 
     # Make non valid frame x any as Nans
     sessions[x] = sessions[x]
@@ -199,10 +213,10 @@ def interpolate_sessions(sessions: pd.DataFrame, x: str, y: str,
         sess_df_filled.append(group.reset_index(drop=True))
 
     sessions = pd.concat(sess_df_filled, axis=0)
-    if verbose:
-        logger.info(f"Cleaned sessions as beaten: {beaten_cnt}")
-        logger.info(f"Sessions after interpolation shape: {sessions.shape}")
+    logger.info(f"Cleaned sessions as beaten: {beaten_cnt}")
+    logger.info(f"Sessions after interpolation shape: {sessions.shape}")
     del sess_df_filled
+
     return sessions
 
 
@@ -216,9 +230,13 @@ def restructure_gaze_data(data: pd.DataFrame, is_train: bool,
     :param padding_symbol: symbol for padding (default is 0.0)
     :return: dataframe with processed samples.
     """
-    meta_columns = ['user_id', 'session_id', 'stimulus_type', 'move_id', 'sp_id']
-    params = dict(read_json(params_path)).get("preprocessing_params", {})
+    try:
+        params = dict(read_json(params_path)).get("preprocessing_params", {})
+    except Exception as ex:
+        logger.error(f"Invalid data processing parameters path: {traceback.print_tb(ex.__traceback__)}")
+        raise AttributeError(f"Invalid data processing parameters path.")
 
+    meta_columns = params.get("meta_columns", [])
     # If stimulus name contains '_' change it to '-'
     data.stimulus_type = data.stimulus_type.str.replace('_', '-', regex=True)
     data['length'] = data.apply(lambda row: sum(row.notnull()) - len(meta_columns), axis=1)
@@ -235,9 +253,14 @@ def restructure_gaze_data(data: pd.DataFrame, is_train: bool,
                                                 "_" + str(row['sp_id']) +
                                                 "_" + str(row['stimulus_type'])), axis=1)
     # Split, pad and truncate
-    data = split_dataset(data, label_col_name='ts_id', max_seq_len=params.get('max_seq_length', 100))
-    data = pad_dataset(data, max_seq_len=params.get('max_seq_length', 100), pad_symbol=params.get('padding_symbol', 0))
-    data = pd.DataFrame(list(truncate_dataset(data, max_seq_len=params.get('max_seq_length', 100))))
+    data = split_dataset(data,
+                         label_col_name='ts_id',
+                         max_seq_len=params.get('max_seq_length', 100))
+    data = pad_dataset(data,
+                       max_seq_len=params.get('max_seq_length', 100),
+                       pad_symbol=params.get('padding_symbol', 0))
+    data = pd.DataFrame(list(truncate_dataset(data,
+                                              max_seq_len=params.get('max_seq_length', 100))))
     if is_train:
         data['user_id'] = data.label.apply(lambda x: x.split("_")[0]).astype(int)
     else:
@@ -249,28 +272,40 @@ def restructure_gaze_data(data: pd.DataFrame, is_train: bool,
     data["stimulus_type"] = data.label.apply(lambda x: x.split("_")[3])
     data["unique_session_id"] = data.groupby(["user_id", "user_session_id"]).ngroup()
     data.rename({"guid": "splitted_sp_id"}, axis=1, inplace=True)
+
     return data
 
 
-def normalize_gaze(data: pd.DataFrame, to_restore: bool=False,
-                   to_save: bool=True, checkpoint_dir: str="models_checkpoints") -> pd.DataFrame:
+def normalize_gaze(data: pd.DataFrame, to_restore: bool,
+                   to_save: bool, checkpoint_dir: str) -> pd.DataFrame:
     """
     Re-scale gaze data to zero mean and singular std.
     """
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
-    checkpoints = [checkpoint_dir + "/" + name for name in os.listdir(checkpoint_dir)
-                   if "scaler" in name]
-    if to_restore and checkpoints:
+    scaler = None
+
+    checkpoint_dir = Path(checkpoint_dir)
+    if not checkpoint_dir.exists():
+        checkpoint_dir.mkdir(exist_ok=True)
+
+    checkpoints = [str(name) for name in list(checkpoint_dir.glob("*.pkl")) if name.match("*scaler*")]
+    if to_restore and (len(checkpoints) > 0):
         latest_checkpoint = max(checkpoints, key=os.path.getctime)
-        logger.info(f"Restoring normalizer from: {latest_checkpoint}")
-        scaler = joblib.load(latest_checkpoint)
+        try:
+            logger.info(f"Restoring normalizer from: {latest_checkpoint}")
+            scaler = joblib.load(latest_checkpoint)
+        except Exception as ex:
+            logger.error(f"Error occurred during scaler restoring: {traceback.print_tb(ex.__traceback__)}")
+
+    if scaler is not None:
         data["data_scaled"] = [list(vec) for vec in scaler.transform(data['data'].to_list())]
     else:
         scaler = StandardScaler()
         data["data_scaled"] = [list(vec) for vec in scaler.fit_transform(data['data'].to_list())]
+
     if to_save:
-        _ = joblib.dump(scaler, os.path.join(checkpoint_dir, "scaler.pkl"), compress=9)
+        _ = joblib.dump(scaler,
+                        str(checkpoint_dir / f"scaler_{datetime.datetime.now().strftime('%Y-%m-%d_%H:%M')}.pkl"),
+                        compress=9)
 
     return data
 

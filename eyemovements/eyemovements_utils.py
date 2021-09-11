@@ -87,8 +87,9 @@ def clean_short_movements(movements: np.ndarray,
     Cleaning small inserts of some movement in gaze data.
     For example:
         if in gaze row is small saccade (< 12 ms.) between two fixations/sp, then
-        mark all poits of this saccade as fixation/sp.
+        mark all points of this saccade as fixation/sp.
     """
+    logger.info(f"Cleaning short {GazeState.decode(movements_type)} eye movements.")
     moves = get_movement_indexes(movements, movements_type)
 
     for move_idxs in moves:
@@ -102,7 +103,8 @@ def clean_short_movements(movements: np.ndarray,
                 else:
                     movements[move_idxs] = GazeState.unknown
         except Exception as e:
-            print(f"Error occurred: {traceback.print_tb(e.__traceback__)}")
+            logger.error(f"Error occurred during cleaning short {GazeState.decode(movements_type)} eye movements.")
+            logger.error(f"{traceback.print_tb(e.__traceback__)}")
 
     return movements
 
@@ -150,7 +152,7 @@ def filter_errors(movements: np.ndarray,
         # discard movements with more than 50% erroneous samples
         percentage_error = np.sum(errors[move_idxs]) / float(len(move_idxs))
         if percentage_error >= 0.5:
-            print(f"[INFO-FILTER]: Errors in indexes: {move_idxs} more then 50% of samples.")
+            logger.warning(f"Erroneous observations {move_idxs} make up more than 50% of the sample.")
             mask[move_idxs] = 0
 
     return np.nonzero(mask)
