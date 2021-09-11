@@ -20,14 +20,13 @@ class Session:
         self._session_path = session_path
         self._user_id = user_id
 
-        self._dataset_fn = "_".join(self._session_path.split("_")[:-1]) + ".csv"
-        if not Path(self._dataset_fn).exists():
+        if not Path(self._session_path).exists():
             logger.error(f"""Error during session #{self._session_id} creation. 
-            Given session path do not exists: {self._dataset_fn}""")
+            Given session path do not exists: {self._session_path}""")
             raise FileNotFoundError(f"""Error during session #{self._session_id} creation. 
-            Given session path do not exists: {self._dataset_fn}""")
+            Given session path do not exists: {self._session_path}""")
 
-        self._stimulus_type = "_".join(self._session_path.split("\\")[-1].replace("__", "_").split("_")[-12:-10])
+        self._stimulus_type = "_".join(Path(self._session_path).stem.replace("__", "_").split("_")[-11:-9])
         self._stimulus_type = "kot#0" if "kot" in self._stimulus_type else self._stimulus_type
         self._stimulus_type = "sobaka#0" if "sobaka" in self._stimulus_type else self._stimulus_type
 
@@ -36,7 +35,7 @@ class Session:
         Get data from eyetracker for current session.
         todo add_video: to add data from video and stimulus.
         """
-        gaze_df = pd.read_csv(self._dataset_fn, sep='\t')
+        gaze_df = pd.read_csv(self._session_path, sep='\t')
         gaze_df.columns = [col.strip() for col in gaze_df.columns]
         gaze_df['timestamp'] = pd.to_datetime(gaze_df['timestamp'], unit='s')
         gaze_df['session_id'] = self._session_id
@@ -44,7 +43,7 @@ class Session:
         gaze_df['user_id'] = self._user_id
         gaze_df["x_diff"] = gaze_df["stim_X"] - gaze_df["gaze_X"]
         gaze_df["y_diff"] = gaze_df["stim_Y"] - gaze_df["gaze_Y"]
-        gaze_df['filename'] = self._dataset_fn
+        gaze_df['filename'] = self._session_path
         return gaze_df
 
 
@@ -210,6 +209,9 @@ class TrainDataset:
         """
         return self._users
 
+    def get_sessions(self) -> List[Session]:
+        return self._sessions
+
     def create_dataset(self) -> Union[pd.DataFrame, None]:
         sess_df = []
         for i, sess in tqdm(enumerate(self._sessions), total=len(self._sessions)):
@@ -274,13 +276,24 @@ class RunDataset:
             meta_file = str(meta_file[0])  # select one
 
         mdf = pd.read_csv(meta_file, delimiter="\t", encoding="Windows-1251",
-                          header=None, names=['name'])
-        mdf['name'] = mdf['name'].str.replace('\t', ' ', regex=True)
-        mdf['name'] = mdf['name'].str.strip()
-        mdf['filename'] = meta_file
+                          header=None).transpose()
+
+        # For Export3 data type, todo: make option to read several types of metadata files
+        # mdf = pd.read_csv(meta_file, delimiter="\t", encoding="Windows-1251",
+        #                   header=None, names=['first_name', 'second_name'])
+
+        mdf.columns = mdf.iloc[0]
+        mdf = mdf.drop(labels=0, axis=0).dropna(how='all')
+        mdf['full_name'] = ( mdf['last_name'].fillna("") +
+                             " " + mdf['first_name'].fillna("")).str.strip()
+        mdf['full_name'] = mdf['full_name'].apply(lambda x: x.replace(r"  ", r" "))
+        mdf['filename'] = str(meta_file)
+        mdf['filename'] = mdf.filename.apply(lambda x: ("_".join(x.split("_")[:-1]) + ".csv"))
         mdf['user_id'] = 1
+
         try:
-            owner = User(user_id=1, user_name=mdf['name'].values[0], sessions_fns=mdf['filename'].to_list())
+            owner = User(user_id=1, user_name=mdf['full_name'].values[0],
+                         sessions_fns=mdf['filename'].unique().tolist())
         except Exception as ex:
             logger.error(f"Error occurred during creation owner user with file #{meta_file}")
             logger.error(f"{traceback.print_tb(ex.__traceback__)}")
@@ -311,6 +324,7 @@ class RunDataset:
                 except Exception as ex:
                     logger.error(f"""Exception occurred during reading metadata file: {str(mfn)}\n
                                         {traceback.print_tb(ex.__traceback__)}""")
+            del mdf
             if len(meta_df) == 0:
                 logger.error(f"No metadata files read successfully. Check parameters and data formats.")
                 raise FileNotFoundError(f"No metadata files read successfully.")
@@ -320,18 +334,18 @@ class RunDataset:
             meta_df['full_name'] = (
                         meta_df['last_name'].fillna("") + " " + meta_df['first_name'].fillna("")).str.strip()
             meta_df['full_name'] = meta_df['full_name'].apply(lambda x: x.replace(r"  ", r" "))
-            meta_df['session_filename'] = meta_df.filename.apply(lambda x: ("_".join(x.split("_")[:-1]) + ".csv"))
+            meta_df['filename'] = meta_df.filename.apply(lambda x: ("_".join(x.split("_")[:-1]) + ".csv"))
             meta_df['user_id'] = meta_df.full_name.replace(to_replace={u: i for i, u
                                                                        in enumerate(meta_df.full_name.unique())})
 
-            # meta_df = pd.concat(meta_df).groupby(by='full_name').agg({'session_filename':
-            #                                                               lambda x: list(x)}).reset_index()
-            meta_df['user_id'] = np.arange(0, len(meta_df))
+            meta_df = meta_df.groupby(by=[c for c in meta_df.columns
+                                          if c != 'filename'], dropna=False).agg({'filename':
+                                                                                 lambda x: list(x)}).reset_index()
 
             users = []
-            for i, row in meta_df[['user_id', 'full_name', 'session_filename']].iterrows():
+            for i, row in meta_df[['user_id', 'full_name', 'filename']].iterrows():
                 try:
-                    u = User(user_id=row['user_id'], user_name=row['full_name'], sessions_fns=row['session_filename'])
+                    u = User(user_id=row['user_id'], user_name=row['full_name'], sessions_fns=row['filename'])
                     users.append(u)
                 except Exception as ex:
                     logger.error(f"Error occurred during creation user: {traceback.print_tb(ex.__traceback__)}")
@@ -412,12 +426,15 @@ if __name__ == "__main__":
     # test_unseen train
     dataset_path = "D:\\Data\\EyesSimulation Sessions\\Export_full\\test_seen"
     init_config(config_path)
+
     dataset = TrainDataset(dataset_path)
-    print(f"Unique users: {len(dataset._users)} with sessions: {len(dataset._sessions)}")
-    for user in dataset._users:
-        print(user)
+    logger.info(f"Unique users: {len(dataset.get_users())} with sessions: {len(dataset.get_sessions())}")
+    for user in dataset.get_users():
+        logger.info(user)
+
     gaze_data = dataset.create_dataset()
-    print(gaze_data.shape)
+    logger.info(gaze_data.shape)
+
     # all_test_unseen_data
     gaze_data.to_csv(os.path.join(os.path.dirname(dataset_path), "results", "all_test_seen_data.csv"),
                      sep=';', encoding='utf-8')

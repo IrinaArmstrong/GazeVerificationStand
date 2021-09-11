@@ -67,8 +67,5 @@ class TestDatasets(unittest.TestCase):
         logger.info(f"Owner data of shape: {owner_data.shape}")
         logger.info(f"Others data  of shape: {others_data.shape}")
 
-
-
-
 if __name__ == '__main__':
     unittest.main()
