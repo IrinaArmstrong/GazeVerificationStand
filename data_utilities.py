@@ -305,7 +305,7 @@ def normalize_gaze(data: pd.DataFrame, to_restore: bool,
     if to_save:
         _ = joblib.dump(scaler,
                         str(checkpoint_dir / f"scaler_{datetime.datetime.now().strftime('%Y-%m-%d_%H:%M')}.pkl"),
-                        compress=9)
+                        compress=0)
 
     return data
 

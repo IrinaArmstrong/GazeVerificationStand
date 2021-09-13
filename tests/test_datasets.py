@@ -23,7 +23,7 @@ class TestDatasets(unittest.TestCase):
         init_config(str(self._current_base_path / "set_locations.ini"))
 
     def test_train_dataset_creation(self):
-        ds = TrainDataset(ds_path=config.get('DataPaths', 'train_data'))
+        ds = TrainDataset(ds_path=config.get('DataPaths', 'run_data'))
         logger.info(f"Found unique users: {len(ds.get_users())}")
         gaze_data = ds.create_dataset()
 

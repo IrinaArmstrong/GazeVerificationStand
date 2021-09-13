@@ -1,5 +1,4 @@
 import os
-import glob
 import traceback
 import numpy as np
 import pandas as pd
@@ -17,7 +16,7 @@ class Session:
 
     def __init__(self, session_path: str, session_id: int, user_id: int):
         self._session_id = session_id
-        self._session_path = session_path
+        self._session_path = session_path  # meta-file or data-file???
         self._user_id = user_id
 
         if not Path(self._session_path).exists():
@@ -166,9 +165,9 @@ class TrainDataset:
                                                                     'session_filename': lambda x: list(x)}).reset_index()
 
         users = []
-        for i, row in meta_df[['user_id', 'full_name', 'filename']].iterrows():
+        for i, row in meta_df[['user_id', 'full_name', 'session_filename']].iterrows():
             try:
-                u = User(user_id=row['user_id'], user_name=row['full_name'], sessions_fns=row['filename'])
+                u = User(user_id=row['user_id'], user_name=row['full_name'], sessions_fns=row['session_filename'])
                 users.append(u)
             except Exception as ex:
                 logger.error(f"Error occurred during creation user: {traceback.print_tb(ex.__traceback__)}")
@@ -284,7 +283,7 @@ class RunDataset:
 
         mdf.columns = mdf.iloc[0]
         mdf = mdf.drop(labels=0, axis=0).dropna(how='all')
-        mdf['full_name'] = ( mdf['last_name'].fillna("") +
+        mdf['full_name'] = (mdf['last_name'].fillna("") +
                              " " + mdf['first_name'].fillna("")).str.strip()
         mdf['full_name'] = mdf['full_name'].apply(lambda x: x.replace(r"  ", r" "))
         mdf['filename'] = str(meta_file)
