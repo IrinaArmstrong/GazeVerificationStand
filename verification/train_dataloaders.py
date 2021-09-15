@@ -1,11 +1,13 @@
+import gc
 import random
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from collections import defaultdict
 from typing import (Tuple, Union, Dict, Any)
 
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from helpers import read_json
 from verification.splits import create_splits
@@ -67,6 +69,12 @@ class SessionsDataset(Dataset):
             return dict(inds), inv_inds
         return inds
 
+    def get_targets(self) -> np.ndarray:
+        return self._targets
+
+    def get_data(self) -> np.ndarray:
+        return self._data
+
     def __getitem__(self, idx):
         """ Get item from dataset by index. """
         x = self._data[idx]
@@ -83,14 +91,8 @@ class SessionsDataset(Dataset):
         """ Length of dataset. """
         return len(self._data)
 
-# todo: useless method, delete it!
-def init_dataset(data, targets, mode, transform=None, target_transform=None):
-    dataset = SessionsDataset(data, targets, mode=mode,
-                              transform=transform, target_transform=target_transform)
-    return dataset
 
-
-class PrototypicalBatchSampler(object):
+class PrototypicalBatchSampler(Sampler):
     """
     PrototypicalBatchSampler: yield a batch of indexes at each iteration.
     Indexes are calculated by keeping in account 'classes_per_it' and 'num_samples',
@@ -100,8 +102,7 @@ class PrototypicalBatchSampler(object):
     """
     available_modes = ['train', 'test', 'validation']
 
-    def __init__(self, labels, mode: str, classes_per_it, num_samples, iterations,
-                 **kwargs):
+    def __init__(self, labels, **kwargs):
         """
         Initialize the PrototypicalBatchSampler object
         Args:
@@ -113,98 +114,105 @@ class PrototypicalBatchSampler(object):
         """
         super(PrototypicalBatchSampler, self).__init__()
 
-        self.__labels = labels
+        self.__labels = labels  # len(labels) == len(all_dataset) !
         self.__mode = kwargs.get('mode', 'train')
         if self.__mode not in self.available_modes:
             logger.error(f"Provided `mode` parameters should be one from available list: {self.available_modes}")
             logger.error(f"But was given: {self.__mode}")
             raise AttributeError(f"Provided `mode` parameters should be one from available list.")
 
-        self.classes_per_it = kwargs.get("classes_per_it", None)
-        self.sample_per_class = kwargs.get("num_samples", None)
-        self.iterations = kwargs.get("iterations", 100)
+        self._classes_per_it = kwargs.get("classes_per_it", None)  # n-shot
+        self._sample_per_class = kwargs.get("num_samples", None)  # k-way
+        self._iterations = kwargs.get("iterations", 100)
 
-        self.classes, self.counts = np.unique(self.__labels, return_counts=True) # in sorted order
-        self.classes = torch.LongTensor(self.classes)
+        self._unique_classes, self._classes_counts = np.unique(self.__labels, return_counts=True)  # in sorted order
+        self._unique_classes = torch.LongTensor(self._unique_classes)
 
-        # create a matrix, indexes, of dim: classes X max(elements per class)
+        # Create a matrix, indexes, of dim: classes X max(elements per class)
         # fill it with nans
         # for every class c, fill the relative row with the indices samples belonging to c
-        # in numel_per_class we store the number of samples for each class/row
-        self.idxs = range(len(self.__labels))
-        self.indexes = np.empty((len(self.classes), max(self.counts)), dtype=int) * np.nan
-        self.indexes = torch.Tensor(self.indexes)
-        self.numel_per_class = torch.zeros_like(self.classes)
+
+        self._dataset_indexes = np.empty((len(self._unique_classes), max(self._classes_counts)), dtype=int) * np.nan
+        self._dataset_indexes = torch.Tensor(self._dataset_indexes)
+
+        # Count each class occurrence - store the number of samples for each class/row
+        self._num_elem_per_class = torch.zeros_like(self._unique_classes)
         for idx, label in enumerate(self.__labels):
-            label_idx = np.argwhere(self.classes == label).item()
-            self.indexes[label_idx, np.where(np.isnan(self.indexes[label_idx]))[0][0]] = idx
-            self.numel_per_class[label_idx] += 1
+            label_idx = np.argwhere(self._unique_classes == label).item()
+            self._dataset_indexes[label_idx, np.where(np.isnan(self._dataset_indexes[label_idx]))[0][0]] = idx
+            self._num_elem_per_class[label_idx] += 1
 
     def __iter__(self):
         """
         Yield a batch of indexes of samples from data.
         """
-        spc = self.sample_per_class
-        cpi = self.classes_per_it
-
-        for it in range(self.iterations):
-            batch_size = spc * cpi
+        for iteration in range(self._iterations):
+            logger.debug(f"Prototypical sampler iteration #{iteration}")
+            batch_size = self._sample_per_class * self._classes_per_it
             batch = torch.LongTensor(batch_size)
-            c_idxs = torch.randperm(len(self.classes))[:cpi]  # select cpi random classes for iteration
-            last_ind = 0
-            for i, c in enumerate(self.classes[c_idxs]):
-                s = slice(i * spc, (i + 1) * spc)  # create slice
-                # FIXME when torch.argwhere will exists
-                label_idx = torch.arange(len(self.classes)).long()[self.classes == c].item()
-                sample_idxs = torch.randperm(self.numel_per_class[label_idx])[:spc]
-                if len(sample_idxs) < spc:
-                    sample_idxs = random.choices(np.arange(self.numel_per_class[label_idx]), k=spc)
-                batch[s] = self.indexes[label_idx][sample_idxs]
+
+            # Select classes_per_it random classes for iteration
+            iter_classes_idxs = torch.randperm(len(self._unique_classes))[:self._classes_per_it]
+
+            for i, c in enumerate(self._unique_classes[iter_classes_idxs]):
+                s = slice(i * self._sample_per_class, (i + 1) * self._sample_per_class)  # create slice
+                # Get indexes of labels with current class
+                label_idx = torch.arange(len(self._unique_classes)).long()[self._unique_classes == c].item()
+                # Get sample_per_class random data samples that belongs to current class
+                samples_indexes = torch.randperm(self._num_elem_per_class[label_idx])[:self._sample_per_class]
+                if len(samples_indexes) < self._sample_per_class:
+                    samples_indexes = random.choices(np.arange(self._num_elem_per_class[label_idx]),
+                                                     k=self._sample_per_class)
+                batch[s] = self._dataset_indexes[label_idx][samples_indexes]
+
+            # Shuffle batch
             batch = batch[torch.randperm(len(batch))]
             yield batch
 
-    def __len__(self):
+    def __len__(self) -> int:
         """
         returns the number of iterations (episodes) per epoch
         """
-        return self.iterations
+        return self._iterations
 
 
-def init_sampler(labels: np.ndarray, mode: str, classes_per_it: int,
-                 iterations: int, num_query: int, num_support: int):
-    num_samples = num_support + num_query
+def init_dataloader(data: np.ndarray, targets: np.ndarray,
+                    mode: str, classes_per_it: int,
+                    iterations: int, num_query: int, num_support: int,
+                    transform=None, target_transform=None):
 
-    return PrototypicalBatchSampler(labels=labels,
-                                    mode=mode,
-                                    classes_per_it=classes_per_it,
-                                    num_samples=num_samples,
-                                    iterations=iterations)
-
-
-def init_dataloader(data, targets, mode: str, classes_per_it: int,
-                    iterations: int, num_query: int, num_support: int):
-    dataset = init_dataset(data, targets, mode)
-    sampler = init_sampler(dataset._targets, mode,
-                           classes_per_it=classes_per_it,
-                           iterations=iterations,
-                           num_query=num_query,
-                           num_support=num_support)
-
-    dataloader = DataLoader(dataset, batch_sampler=sampler)
-    return dataloader
+    return DataLoader(SessionsDataset(data, targets, mode=mode,
+                                      transform=transform, target_transform=target_transform),
+                      batch_sampler=PrototypicalBatchSampler(labels=targets,
+                                                             mode=mode,
+                                                             classes_per_it=classes_per_it,
+                                                             num_samples=(num_support + num_query),
+                                                             iterations=iterations))
 
 
-def create_training_dataloaders(data: pd.DataFrame, splitting_params_fn: str,
+def create_training_dataloaders(data: pd.DataFrame,
+                                splitting_params_fn: str,
                                 batching_params_fn: str):
     """
     Creates train/val/test dataloaders for Pytorch model training and evaluation.
     :param data: dataframe with generated features
-    :param splitting_params: file with kwargs for splitting function
+    :param splitting_params: file with kwargs for splitting function ()
     :param batching_params_fn: file with kwargs for Prototypical Network batching
     :return: dict of dataloaders (and label encoder)
     """
+    if not Path(splitting_params_fn).exists():
+        logger.error(f"File with settings for splitting data was not found with path provided.")
+        raise FileNotFoundError(f"File with settings for splitting data was not found with path provided.")
+
+    if not Path(batching_params_fn).exists():
+        logger.error(f"File with settings for batching data was not found with path provided.")
+        raise FileNotFoundError(f"File with settings for batching data was not found with path provided.")
+
     splitting_params = dict(read_json(splitting_params_fn)).get("splitting_params", {})
+    logger.debug(f"Splitting parameters: {splitting_params}")
+
     batching_params = dict(read_json(batching_params_fn)).get("batching_options", {})
+    logger.debug(f"Batching parameters: {batching_params}")
 
     if splitting_params.get('encode_target', False):
         splits, encoder = create_splits(data, **splitting_params)
@@ -218,8 +226,10 @@ def create_training_dataloaders(data: pd.DataFrame, splitting_params_fn: str,
                                                iterations=batching_params.get("iterations"),
                                                num_query=batching_params.get("num_query_train"),
                                                num_support=batching_params.get("num_support_train"))
-        logger.info(f"Dataloader of type: {ds_type} created")
+        logger.info(f"Data loader of type: {ds_type} created.")
     del splits
+    _ = gc.collect()
+
     if splitting_params.get('encode_target', False):
         return dataloaders, encoder
     else:
