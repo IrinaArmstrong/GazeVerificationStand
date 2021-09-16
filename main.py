@@ -67,12 +67,12 @@ class VerificationStand:
 
         # Create splits for training model
         dataloaders = create_training_dataloaders(data, splitting_params_fn=config.get('Preprocessing',
-                                                                           'processing_params'),
+                                                                                       'processing_params'),
                                                   batching_params_fn=config.get('GazeVerification', 'model_params'))
 
         # Run training
         self._model = self._trainer.fit(train_loader=dataloaders.get('train'),
-                                        val_loader=dataloaders.get('val'))
+                                        val_loader=dataloaders.get('validation'))
 
         # Test quality
         _ = evaluate_verification(self._model, dataloader=dataloaders.get('test'),

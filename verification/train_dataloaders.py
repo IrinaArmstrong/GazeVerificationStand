@@ -112,7 +112,7 @@ class PrototypicalBatchSampler(Sampler):
         - num_samples: number of samples for each iteration for each class (support + query)
         - iterations: number of iterations (episodes) per epoch
         """
-        super(PrototypicalBatchSampler, self).__init__()
+        # super(PrototypicalBatchSampler, self).__init__()
 
         self.__labels = labels  # len(labels) == len(all_dataset) !
         self.__mode = kwargs.get('mode', 'train')
