@@ -1,31 +1,35 @@
 {
-    "model_params": {
-      "embedding_size": 20
+  "model_params": {
+    "embedding_size": 20
+  },
+  "batching_options": {
+    "classes_per_it_train": 50,
+    "iterations": 400,
+    "num_support_train": 10,
+    "num_query_train": 20,
+    "classes_per_it_val": 25,
+    "num_support_val": 10,
+    "num_query_val": 10
+  },
+  "training_options": {
+    "device": "cpu",
+    "optimizer_kwargs": {
+      "base_lr": 1e-4
     },
-    "batching_options": {
-      "classes_per_it_train": 50,
-      "iterations": 400,
-      "num_support_train": 10,
-      "num_query_train": 20,
-      "classes_per_it_val": 25,
-      "num_support_val": 10,
-      "num_query_val": 10
-    },
-    "training_options": {
-      "device": "cpu",
-      "base_lr": 1e-4,
+    "lr_scheduler_kwargs": {
       "scheduler_max_lr": 0.01,
-      "n_epochs": 100,
-      "start_epoch": 0,
-      "log_interval": 100,
-      "es_patience":  10,
       "scheduler_min_lr":  1e-4,
       "lr_step_size_up": 5,
-      "lr_scheduler_gamma":  0.1,
-      "tensorboard_log_dir": "tblogs",
-      "to_unsqueeze": false,
-      "output_dir": "output",
-      "model_name": "prototypical_test_model",
-      "checkpoints_dir": "models_checkpoints"
-    }
+      "lr_scheduler_gamma":  0.1
+    },
+    "n_epochs": 100,
+    "start_epoch": 0,
+    "log_interval": 100,
+    "es_patience":  10,
+    "tensorboard_log_dir": "tblogs",
+    "to_unsqueeze": false,
+    "output_dir": "output",
+    "model_name": "prototypical_test_model",
+    "checkpoints_dir": "models_checkpoints"
+  }
 }

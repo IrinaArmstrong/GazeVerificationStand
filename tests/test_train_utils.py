@@ -1,5 +1,3 @@
-import os
-import sys
 import unittest
 import numpy as np
 import pandas as pd
@@ -8,8 +6,6 @@ from pathlib import Path
 from helpers import read_json
 from config import config, init_config
 from verification.train_dataloaders import create_training_dataloaders
-from verification.model import EmbeddingNet
-from verification.train_utils import save_model, init_model, clear_logs_dir
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)

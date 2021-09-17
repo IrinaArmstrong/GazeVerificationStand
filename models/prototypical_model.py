@@ -3,51 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from verification.loss import euclidean_dist
-from verification.cbam import CBAM
+
 import logging_handler
 logger = logging_handler.get_logger(__name__)
-
-# --------------------- Models Architectures ----------------
-
-class EmbeddingNet(nn.Module):
-    """
-    Base architecture for embeddings creation.
-    """
-    def __init__(self, embedding_size: int = 100):
-        super(EmbeddingNet, self).__init__()
-        self._embedding_size = embedding_size
-
-        self.cnn1 = nn.Sequential(
-            nn.Conv1d(2, 128, kernel_size=3, stride=2),
-            CBAM(gate_channels=128, reduction_ratio=16, no_spatial=True),
-            nn.MaxPool1d(5, stride=2),
-            nn.BatchNorm1d(num_features=128),
-            nn.ReLU(inplace=True),
-
-            nn.Conv1d(128, 256, kernel_size=3, stride=2),
-            CBAM(gate_channels=256, reduction_ratio=16, no_spatial=True),
-            nn.MaxPool1d(3, stride=2),
-            nn.BatchNorm1d(num_features=256),
-            nn.ReLU(inplace=True),
-        )
-
-        self.fc1 = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.Dropout(0.5),
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 128),
-            nn.Dropout(0.5),
-            nn.ReLU(inplace=True),
-            nn.Linear(128, self._embedding_size))
-
-    def forward(self, x):
-        if len(x.size()) == 2:
-            x = torch.unsqueeze(x, 1)
-        output = self.cnn1(x.float())
-        output = output.view(output.size()[0], -1)
-        output = self.fc1(output)
-        return output
-
 
 
 class PrototypeNet(nn.Module):
@@ -104,29 +62,3 @@ class PrototypeNet(nn.Module):
             return self._get_predictions(embeddings, return_dists), embeddings
 
         return self._get_predictions(embeddings, return_dists)
-
-
-class VerificationNet(nn.Module):
-    """
-    Siamese model architecture for verification setting.
-    Includes given base embedding network.
-    """
-    def __init__(self, embedding_net):
-        super(VerificationNet, self).__init__()
-        self.embedding_net = embedding_net
-        self.relu = nn.ReLU()
-
-    def forward_one(self, x):
-        output = self.embedding_net(x)
-        output = output.view(output.size()[0], -1)
-        output = self.relu(output)
-        return output
-
-    def forward(self, x1, x2):
-        output1 = self.forward_one(x1)
-        output2 = self.forward_one(x2)
-        dist = (output2 - output1).pow(2).sum(1)
-        return dist
-
-    def get_embedding(self, x):
-        return self.nonlinear(self.embedding_net(x))

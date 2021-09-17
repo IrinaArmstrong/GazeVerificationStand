@@ -13,7 +13,7 @@ import torch.nn as nn
 
 from config import config
 from helpers import read_json
-from verification.model import EmbeddingNet, PrototypeNet
+from models.prototypical_model import EmbeddingNet, PrototypeNet
 from verification.train_utils import (seed_everything, copy_data_to_device, init_model,
                                       compute_metrics_short, format_time)
 from verification.run_dataloaders import create_embeddings_dataloader

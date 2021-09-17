@@ -1,16 +1,16 @@
 # Basic
 import os
-import sys
-sys.path.insert(0, "..")
+import traceback
 import numpy as np
 from datetime import datetime
+from pathlib import Path
 
 import torch
 import torch.nn as nn
 
 from config import config
 from helpers import read_json
-from verification.model import EmbeddingNet
+from models.prototypical_model import EmbeddingNet
 from verification.early_stopping import EarlyStopping
 from verification.loss import PrototypicalLoss
 from visualization import visualize_training_process
@@ -22,31 +22,106 @@ from verification.train_utils import (seed_everything, clear_logs_dir,
 import logging_handler
 logger = logging_handler.get_logger(__name__)
 
+
 class Trainer:
 
-    def __init__(self):
+    def __init__(self, **kwargs):
+        """
+        Class for training selected model with provided parameters.
+        It keeps saving training statistics, checkpoints (is selected such option)
+        and final model weights in to new directory named in unique way.
+        kwargs: {'model', 'loss'}
+        """
         self.__is_fitted = False
-        self._parameters  = dict(read_json(config.get("GazeVerification", "model_params")))
-        self._device = torch.device(self._parameters.get("training_options", {}).get("device", "cpu"))
-        self.__init_train_options()
+
+        parameters_fn = config.get("GazeVerification", "model_params")
+        if not Path(parameters_fn).exists():
+            logger.error(f"File with training model parameters was not found by the provided path: {parameters_fn}")
+            raise FileNotFoundError(f"File with training model parameters was not found by the provided path.")
+
+        logger.info(f"Loading training model parameters from {parameters_fn}")
+        self.__general_parameters = dict(read_json(parameters_fn))
+        self.__models_parameters = self.__general_parameters.get("model_params", {})
+        self.__batching_parameters = self.__general_parameters.get("batching_options", {})
+        self.__training_parameters = self.__general_parameters.get("training_options", {})
+        logger.info(f"Training general parameters: {self.__general_parameters}")
+
+        # Set device type
+        self.__acquire_device()
+        self.__init_train_options(kwargs)
         seed_everything(seed_value=11)
 
+    def __acquire_device(self):
+        """ Init training device. """
+        self.__device = torch.device(self.__training_parameters.get("device", "cpu"))
+        logger.info(f"Training device: {self.__device.type}")
 
-    def __init_train_options(self):
+        if self.__device == 'gpu':
+            if not torch.cuda.is_available():
+                logger.error(f"Device provided is CUDA, but it is available. Change to CPU.")
+                self.__device = torch.device('cpu')
+            else:
+                logger.info(torch.cuda.get_device_name(0))
+                logger.info('Memory Usage, Allocated:', round(torch.cuda.memory_allocated(0) / 1024 ** 3, 1), 'GB')
+                logger.info('Memory Usage, Cached:', round(torch.cuda.memory_reserved(0) / 1024 ** 3, 1), 'GB')
 
-        self._model = EmbeddingNet(**self._parameters.get("model_params"))
-        self.__loss_fn = PrototypicalLoss(self._device)
-        self.__optimizer = torch.optim.Adam(params=self._model.parameters(),
-                                            lr=self._parameters.get("training_options", {}).get("base_lr", 1e-4))
-        self.__scheduler = torch.optim.lr_scheduler.StepLR(optimizer=self.__optimizer,
-                                                           gamma=self._parameters.get(
-                                                               "training_options",
-                                                               {}).get("lr_scheduler_gamma", 0.1),
-                                                           step_size=self._parameters.get(
-                                                               "training_options",
-                                                               {}).get("lr_step_size_up", 5))
-        self._metrics = [LossCallback(), TensorboardCallback(log_dir=self._parameters.get(
-            "training_options", {}).get("tensorboard_log_dir", "tblogs"))]
+    def __init_train_options(self, **kwargs):
+        """
+        Initialize training parameters, model and optimizer hyperparameters.
+        """
+        # Init model
+        self.__model = kwargs.get('model', None)
+        if self.__model is None:
+            logger.error(f"No model class provided in kwargs for training.")
+            raise AttributeError(f"No model class provided in kwargs for training.")
+
+        try:
+            self.__model = self.__model(**self.__models_parameters)
+        except Exception as ex:
+            logger.error(f"Exception occurred during initializing model: {traceback.print_tb(ex.__traceback__)}")
+            raise ex
+
+        # Init loss
+        self.__loss_fn = kwargs.get('loss', None)
+        if self.__loss_fn is None:
+            logger.error(f"No loss class provided in kwargs for training.")
+            raise AttributeError(f"No loss class provided in kwargs for training.")
+
+        try:
+            self.__loss_fn = self.__loss_fn(self.__device)
+        except Exception as ex:
+            logger.error(f"Exception occurred during initializing loss: {traceback.print_tb(ex.__traceback__)}")
+            raise ex
+
+        # Optimizer
+        self.__optimizer = kwargs.get('optimizer', None)
+        if self.__optimizer is None:
+            logger.error(f"No optimizer class provided in kwargs for training, set default.")
+            self.__optimizer = torch.optim.Adam(params=self.__model.parameters(), lr=1e-4)
+
+        try:
+            self.__optimizer = self.__optimizer(params=self.__model.parameters(),
+                                                **self.__training_parameters.get("optimizer_kwargs", {}))
+        except Exception as ex:
+            logger.error(f"Exception occurred during initializing optimizer: {traceback.print_tb(ex.__traceback__)}")
+            raise ex
+
+        # Optimizer
+        self.__scheduler = kwargs.get('lr_scheduler', None)
+        if self.__scheduler is None:
+            logger.error(f"No lr_scheduler class provided in kwargs for training, set default.")
+            self.__scheduler = torch.optim.lr_scheduler.StepLR(optimizer=self.__optimizer,
+                                                               gamma=0.1, step_size=5)
+        try:
+            self.__scheduler = self.__scheduler(optimizer=self.__optimizer,
+                                                **self.__training_parameters.get("lr_scheduler_kwargs", {}))
+        except Exception as ex:
+            logger.error(
+                f"Exception occurred during initializing lr_scheduler: {traceback.print_tb(ex.__traceback__)}")
+            raise ex
+
+        self._metrics = [LossCallback(),
+                         TensorboardCallback(log_dir=self.__training_parameters.get("tensorboard_log_dir", "tblogs"))]
 
 
     def fit(self, train_loader:  torch.utils.data.DataLoader,
@@ -64,34 +139,34 @@ class Trainer:
 
         # Add Tensorboard writer
         current_time = datetime.now().strftime("%Y.%m.%d-%H:%M:%S")
-        clear_logs_dir(self._parameters.get("training_options",
-                                            {}).get("tensorboard_log_dir", "tblogs"))
+        clear_logs_dir(self.__general_parameters.get("training_options",
+                                                     {}).get("tensorboard_log_dir", "tblogs"))
 
-        if type(self._device) == str:
-            self._device = torch.device(self._device)
-        self._model.to(self._device)
-        logger.info(f"Model moved to device: {self._device}")
+        if type(self.__device) == str:
+            self.__device = torch.device(self.__device)
+        self.__model.to(self.__device)
+        logger.info(f"Model moved to device: {self.__device}")
 
         # Training
         logger.info(f'--- Start training with number of epochs = ',
-                    f'{self._parameters.get("training_options", {}).get("n_epochs", 0)} ---')
+                    f'{self.__general_parameters.get("training_options", {}).get("n_epochs", 0)} ---')
 
-        for epoch in range(0, self._parameters.get("training_options", {}).get("start_epoch", 0)):
+        for epoch in range(0, self.__general_parameters.get("training_options", {}).get("start_epoch", 0)):
             self.__scheduler.step()
 
         # initialize the early_stopping object
-        early_stopping = EarlyStopping(patience=self._parameters.get("training_options", {}).get("es_patience", 0),
+        early_stopping = EarlyStopping(patience=self.__general_parameters.get("training_options", {}).get("es_patience", 0),
                                        verbose=True,
-                                       path=self._parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"))
+                                       path=self.__general_parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"))
 
-        for epoch in range(self._parameters.get("training_options", {}).get("start_epoch", 0),
-                           self._parameters.get("training_options", {}).get("n_epochs", 0)):
+        for epoch in range(self.__general_parameters.get("training_options", {}).get("start_epoch", 0),
+                           self.__general_parameters.get("training_options", {}).get("n_epochs", 0)):
 
             # Train stage
             train_loss = self._train_epoch(train_loader, epoch)
 
             message = 'Epoch: {}/{}. Train set: Average loss: {:.4f}'.format(epoch + 1,
-                                                                             self._parameters.get(
+                                                                             self.__general_parameters.get(
                                                                                  "training_options",
                                                                                  {}).get("n_epochs", 0),
                                                                              train_loss)
@@ -103,10 +178,10 @@ class Trainer:
 
             # early_stopping needs the validation loss to check if it has decresed,
             # and if it has, it will make a checkpoint of the current model
-            early_stopping(val_loss, self._model)
+            early_stopping(val_loss, self.__model)
 
             message += '\nEpoch: {}/{}. Validation set: Average loss: {:.4f}'.format(epoch + 1,
-                                                                                     self._parameters.get(
+                                                                                     self.__general_parameters.get(
                                                                                          "training_options",
                                                                                          {}).get("n_epochs", 0),
                                                                                      val_loss)
@@ -121,27 +196,27 @@ class Trainer:
                 break
 
         # Saving final version
-        save_model(self._model,
-                   dir=self._parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"),
-                   filename=self._parameters.get("training_options",
-                                                            {}).get("model_name", "model") + "_last_epoch.pt")
+        save_model(self.__model,
+                   dir=self.__general_parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"),
+                   filename=self.__general_parameters.get("training_options",
+                                                          {}).get("model_name", "model") + "_last_epoch.pt")
 
         # Get loss history from LossCallback. Always first.
         save_losses_to_file(self._metrics[0].train_losses, self._metrics[0].train_losses,
-                            save_path=self._parameters.get("training_options", {}).get("output_dir", "."),
-                            model_name=self._parameters.get("training_options",
-                                                            {}).get("model_name", "model"))
+                            save_path=self.__general_parameters.get("training_options", {}).get("output_dir", "."),
+                            model_name=self.__general_parameters.get("training_options",
+                                                                     {}).get("model_name", "model"))
         # Save and show training history
         try:
-            visualize_training_process(loss_fn=os.path.join(self._parameters.get("training_options",
-                                                                                 {}).get("output_dir", "."),
-                                                            self._parameters.get(
+            visualize_training_process(loss_fn=os.path.join(self.__general_parameters.get("training_options",
+                                                                                          {}).get("output_dir", "."),
+                                                            self.__general_parameters.get(
                                                                 "training_options", {}).get("model_name", "model")
                                                             + "_losses.csv"))
         except FileNotFoundError:
             logger.error(f"Losses file not found for visualization.")
 
-        return self._model
+        return self.__model
 
 
     def _train_epoch(self, train_loader: torch.utils.data.DataLoader,
@@ -150,7 +225,7 @@ class Trainer:
         for metric in self._metrics:
             metric.reset()
 
-        self._model.train()
+        self.__model.train()
         losses = []
         accs = []
         total_loss = 0
@@ -163,23 +238,23 @@ class Trainer:
             if not type(data) in (tuple, list):
                 data = (data,)
 
-            data = copy_data_to_device(data, self._device)
+            data = copy_data_to_device(data, self.__device)
             if target is not None:
-                target = copy_data_to_device(target, self._device)
+                target = copy_data_to_device(target, self.__device)
 
             self.__optimizer.zero_grad()
-            outputs = self._model(*data)
+            outputs = self.__model(*data)
             if type(outputs) not in (tuple, list):
                 outputs = (outputs.float(),)
 
             loss_inputs = outputs
             if target is not None:
-                if bool(self._parameters.get("training_options", {}).get("to_unsqueeze", False)):
+                if bool(self.__general_parameters.get("training_options", {}).get("to_unsqueeze", False)):
                     target = (target.float().unsqueeze(1),)
                 else:
                     target = (target.float(),)
                 loss_inputs += target
-            loss_inputs += (self._parameters.get("batching_options", {}).get("num_support_train", 10),)
+            loss_inputs += (self.__general_parameters.get("batching_options", {}).get("num_support_train", 10),)
 
             # print("loss_inputs", loss_inputs)
             loss_outputs = self.__loss_fn(*loss_inputs)
@@ -196,7 +271,7 @@ class Trainer:
             for metric in self._metrics:
                 metric(outputs, target[0], loss.item(), "train", epoch_num)
 
-            if batch_idx % self._parameters.get("training_options", {}).get("log_interval", False) == 0:
+            if batch_idx % self.__general_parameters.get("training_options", {}).get("log_interval", False) == 0:
 
                 message = 'Train: [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                     batch_idx * len(data[0]), len(train_loader.dataset),
@@ -216,7 +291,7 @@ class Trainer:
             for metric in self._metrics:
                 metric.reset()
 
-            self._model.eval()
+            self.__model.eval()
             val_loss = 0
             accs = []
             logger.info(f"---------------- Validation step --------------------")
@@ -226,22 +301,22 @@ class Trainer:
                 target = target if len(target) > 0 else None
                 if not type(data) in (tuple, list):
                     data = (data,)
-                data = copy_data_to_device(data, self._device)
+                data = copy_data_to_device(data, self.__device)
                 if target is not None:
-                    target = copy_data_to_device(target, self._device)
+                    target = copy_data_to_device(target, self.__device)
 
-                outputs = self._model(*data)
+                outputs = self.__model(*data)
 
                 if type(outputs) not in (tuple, list):
                     outputs = (outputs.float(),)
                 loss_inputs = outputs
                 if target is not None:
-                    if bool(self._parameters.get("training_options", {}).get("to_unsqueeze", False)):
+                    if bool(self.__general_parameters.get("training_options", {}).get("to_unsqueeze", False)):
                         target = (target.float().unsqueeze(1),)
                     else:
                         target = (target.float(),)
                     loss_inputs += target
-                loss_inputs += (self._parameters.get("batching_options", {}).get("num_support_train", 10),)
+                loss_inputs += (self.__general_parameters.get("batching_options", {}).get("num_support_train", 10),)
 
                 loss_outputs = self.__loss_fn(*loss_inputs)
                 loss = loss_outputs[0] if type(loss_outputs) in (tuple, list) else loss_outputs

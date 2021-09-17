@@ -12,7 +12,6 @@ from torch.utils.data import DataLoader, Dataset, TensorDataset
 import logging_handler
 logger = logging_handler.get_logger(__name__)
 
-#---------------------------- Verification ----------------------------
 
 Example = namedtuple("Example", ["guid", "data", "label"])
 ContrastiveExample = namedtuple("ContrastiveExample", ["example_0", "example_1", "label"])

@@ -10,9 +10,9 @@ logger = logging_handler.get_logger(__name__)
 # Inspired by https://github.com/jakesnell/prototypical-networks/blob/master/protonets/models/few_shot.py
 
 class PrototypicalLoss(nn.Module):
-    '''
+    """
     Loss class deriving from Module for the prototypical loss function defined below
-    '''
+    """
     def __init__(self, device: Union[torch.device, str]):
         super(PrototypicalLoss, self).__init__()
         self.__device = device
@@ -61,6 +61,7 @@ def prototypical_loss(input: torch.Tensor, target: torch.Tensor,
     acc_val = y_hat.eq(target_inds.squeeze()).float().mean()
 
     return loss_val, acc_val
+
 
 def euclidean_dist(x, y):
     """
