@@ -7,17 +7,14 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
 from config import config
 from helpers import read_json
-from models.prototypical_model import EmbeddingNet
 from verification.early_stopping import EarlyStopping
-from verification.loss import PrototypicalLoss
-from visualization import visualize_training_process
-from verification.metrics import LossCallback, TensorboardCallback
-from verification.train_utils import (seed_everything, clear_logs_dir,
-                                      copy_data_to_device, save_losses_to_file,
-                                      save_model)
+from verification.metrics import LossCallback
+from visualizations.visualization import visualize_training_process
+from verification.train_utils import (seed_everything, copy_data_to_device, save_model)
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -121,26 +118,26 @@ class Trainer:
             raise ex
 
         # Metrics
-        self.__metrics = []
+        self.__metrics = {}
         metrics = kwargs.get('metrics', None)
         # Metrics not provided
         if metrics is None:
             logger.error(f"No metrics list provided in kwargs for training, set default: Loss Callback")
-            self.__metrics = [LossCallback()]
+            self.__metrics = {LossCallback.name(): LossCallback()}
+
         # Metrics are user provided
         else:
             for metric in metrics:
                 try:
                     metrics_params = self.__training_parameters.get("metrics_kwargs", {}).get(metric.name(), {})
-                    self.__metrics.append(metric(**metrics_params))
+                    self.__metrics.update({metric.name: metric(**metrics_params)})
                 except Exception as ex:
                     logger.error(
                         f"Exception occurred during initializing metric: {traceback.print_tb(ex.__traceback__)}")
 
         logger.info(f"Metrics for training: {[m.name() for m in self.__metrics]}")
 
-    def fit(self, train_loader:  torch.utils.data.DataLoader,
-            val_loader: torch.utils.data.DataLoader) -> nn.Module:
+    def fit(self, train_loader: DataLoader, val_loader: DataLoader) -> nn.Module:
 
         """
         Loaders, model, loss function and metrics should work together for a given task,
@@ -152,75 +149,71 @@ class Trainer:
         Online triplet learning: batch loader, embedding model, online triplet loss
         """
 
-        # Add Tensorboard writer
         current_time = datetime.now().strftime("%Y.%m.%d-%H:%M:%S")
-        clear_logs_dir(self.__general_parameters.get("training_options",
-                                                     {}).get("tensorboard_log_dir", "tblogs"))
+        logger.info(f"Training started at {current_time}")
 
-        if type(self.__device) == str:
-            self.__device = torch.device(self.__device)
         self.__model.to(self.__device)
         logger.info(f"Model moved to device: {self.__device}")
 
         # Training
-        logger.info(f'--- Start training with number of epochs = ',
-                    f'{self.__general_parameters.get("training_options", {}).get("n_epochs", 0)} ---')
+        logger.info(f'Start training with number of epochs = {self.__training_parameters.get("n_epochs", 0)}')
 
-        for epoch in range(0, self.__general_parameters.get("training_options", {}).get("start_epoch", 0)):
+        for epoch in range(0, self.__training_parameters.get("start_epoch", 0)):
             self.__scheduler.step()
 
         # initialize the early_stopping object
-        early_stopping = EarlyStopping(patience=self.__general_parameters.get("training_options", {}).get("es_patience", 0),
+        early_stopping = EarlyStopping(patience=self.__training_parameters.get("es_patience", 0),
                                        verbose=True,
-                                       path=self.__general_parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"))
+                                       path=self.__training_parameters.get("checkpoints_dir", "checkpoints_dir"))
 
-        for epoch in range(self.__general_parameters.get("training_options", {}).get("start_epoch", 0),
-                           self.__general_parameters.get("training_options", {}).get("n_epochs", 0)):
+        for epoch in range(self.__training_parameters.get("start_epoch", 0),
+                           self.__training_parameters.get("n_epochs", 0)):
 
             # Train stage
+            for metric_name, metric in self.__metrics.items():
+                metric.on_start()
             train_loss = self._train_epoch(train_loader, epoch)
-
             message = 'Epoch: {}/{}. Train set: Average loss: {:.4f}'.format(epoch + 1,
                                                                              self.__general_parameters.get(
                                                                                  "training_options",
                                                                                  {}).get("n_epochs", 0),
                                                                              train_loss)
-            for metric in self.__metrics:
-                message += '\t{}: {}'.format(metric.name(), metric.value())
+            for metric_name, metric in self.__metrics.items():
+                message += '\t{}: {}'.format(metric_name, metric.value())
 
-            val_loss = self._test_epoch(val_loader)
+            val_loss = self._test_epoch(val_loader, epoch)
             val_loss /= len(val_loader)
 
-            # early_stopping needs the validation loss to check if it has decresed,
+            # early_stopping needs the validation loss to check if it has decreased,
             # and if it has, it will make a checkpoint of the current model
             early_stopping(val_loss, self.__model)
-
             message += '\nEpoch: {}/{}. Validation set: Average loss: {:.4f}'.format(epoch + 1,
                                                                                      self.__general_parameters.get(
                                                                                          "training_options",
                                                                                          {}).get("n_epochs", 0),
                                                                                      val_loss)
-            for metric in self.__metrics:
-                message += '\t{}: {}'.format(metric.name(), metric.value())
+            for metric_name, metric in self.__metrics.items():
+                message += '\t{}: {}'.format(metric_name, metric.value())
+                metric.on_close()
             logger.info(message)
 
             self.__scheduler.step(val_loss)
 
-            if early_stopping._early_stop:
+            if early_stopping.need_to_stop():
                 logger.info(f"Early stopping at {epoch} epoch.")
                 break
 
         # Saving final version
         save_model(self.__model,
-                   dir=self.__general_parameters.get("training_options", {}).get("checkpoints_dir", "checkpoints_dir"),
-                   filename=self.__general_parameters.get("training_options",
-                                                          {}).get("model_name", "model") + "_last_epoch.pt")
+                   dir=self.__training_parameters.get("checkpoints_dir", "checkpoints_dir"),
+                   filename=self.__training_parameters.get("model_name", "model") + "_last_epoch.pt")
 
         # Get loss history from LossCallback. Always first.
-        save_losses_to_file(self.__metrics[0]._train_losses, self.__metrics[0]._train_losses,
-                            save_path=self.__general_parameters.get("training_options", {}).get("output_dir", "."),
-                            model_name=self.__general_parameters.get("training_options",
-                                                                     {}).get("model_name", "model"))
+        loss_metric = self.__metrics.get(LossCallback.name(), None)
+        if loss_metric is not None:
+            # todo: create separate folder for each experiment and provide it through kwargs - ???
+            loss_metric.to_file(file_path=self.__training_parameters.get("output_dir", "."))
+
         # Save and show training history
         try:
             visualize_training_process(loss_fn=os.path.join(self.__general_parameters.get("training_options",
@@ -232,7 +225,6 @@ class Trainer:
             logger.error(f"Losses file not found for visualization.")
 
         return self.__model
-
 
     def _train_epoch(self, train_loader: torch.utils.data.DataLoader,
                      epoch_num: int):

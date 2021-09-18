@@ -8,6 +8,7 @@ import shutil
 import torch.nn as nn
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from datetime import timedelta
 from prettytable import PrettyTable
 from typing import (List, NoReturn, Tuple, Union, Dict, Any)
@@ -15,7 +16,6 @@ from sklearn.metrics import (balanced_accuracy_score, accuracy_score,
                              classification_report, f1_score,
                              recall_score, precision_score)
 
-sys.path.insert(0, "..")
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -271,26 +271,16 @@ def compute_metrics_short(true_labels: List[int],
     logger.info(x)
 
 
-def clear_logs_dir(dir: str, ignore_errors: bool=True):
+def clear_logs_dir(dir_path: str, ignore_errors: bool = True):
     """
     Reset logging directory with deleting all files inside.
     """
-    files = len(os.listdir(os.path.join(sys.path[0], dir)))
-    shutil.rmtree(os.path.join(sys.path[0], dir), ignore_errors=ignore_errors)
-    os.mkdir(os.path.join(sys.path[0], dir))
-    logger.info(f"Folder {os.path.join(sys.path[0], dir)} cleared, deleted {files} files.")
+    dir_path = Path(dir_path).resolve()
+    if dir_path.exists():
+        files = len(list(dir_path.glob("*")))
+        shutil.rmtree(str(dir_path), ignore_errors=ignore_errors)
+        logger.info(f"Folder {str(dir_path)} cleared, deleted {files} files.")
 
+    dir_path.mkdir(exist_ok=True)
+    logger.info(f"Logging directory created at: {str(dir_path)}")
 
-def save_losses_to_file(train_losses: Dict[int, List[float]],
-                        val_losses: Dict[int, List[float]],
-                        save_path: str=".", model_name: str="model"):
-    """
-    Create a DataFrame from training statistics with using the 'epoch' as the row index.
-    Save it to .csv file.
-    """
-    trains = {k: np.mean(v) for k, v in train_losses.items()}
-    vals = {k: np.mean(v) for k, v in val_losses.items()}
-    df = pd.DataFrame({"Epoch": list(trains.keys()),
-                       "Train Losses": list(trains.values()),
-                       "Val Losses": list(vals.values()),})
-    df.to_csv(os.path.join(save_path, model_name + "_losses.csv"), sep=';')

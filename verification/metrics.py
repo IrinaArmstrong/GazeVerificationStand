@@ -1,9 +1,14 @@
+import os
 import sys
 import torch
+import tqdm
 import numpy as np
+import pandas as pd
 from typing import Tuple
 from collections import defaultdict
 from torch.utils.tensorboard import SummaryWriter
+
+from verification.train_utils import clear_logs_dir
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -17,10 +22,16 @@ class Metric:
                  loss: torch.Tensor, loss_type: str, epoch_num: int):
         raise NotImplementedError
 
+    def on_start(self):
+        raise NotImplementedError
+
     def reset(self):
         raise NotImplementedError
 
     def value(self):
+        raise NotImplementedError
+
+    def on_close(self):
         raise NotImplementedError
 
     @classmethod
@@ -57,6 +68,9 @@ class AccumulatedAccuracyMetric(Metric):
             logger.error(f"Unknown loss type: {loss_type}")
         return self.value()
 
+    def on_start(self):
+        pass
+
     def reset(self):
         # Train
         self._train_correct = 0
@@ -69,6 +83,9 @@ class AccumulatedAccuracyMetric(Metric):
         # adding epsilon to prevent zero-division is some cases
         return (100 * float(self._train_correct) / (self._train_total + sys.float_info.epsilon),
                 100 * float(self._val_correct) / (self._val_total + sys.float_info.epsilon))
+
+    def on_close(self):
+        pass
 
     @classmethod
     def name(cls) -> str:
@@ -95,6 +112,9 @@ class LossCallback(Metric):
             logger.error(f"Unknown loss type: {loss_type}")
         return self.value()
 
+    def on_start(self):
+        pass
+
     def reset(self):
         pass
 
@@ -102,9 +122,24 @@ class LossCallback(Metric):
         return (np.mean(self._train_losses.get(max(self._train_losses.keys()))),
                 np.mean(self._val_losses.get(max(self._val_losses.keys()))))
 
+    def on_close(self):
+        pass
+
     @classmethod
     def name(cls) -> str:
         return 'Loss'
+
+    def to_file(self, file_path: str, experiment_name: str):
+        """
+        Create a DataFrame from training statistics with using the 'epoch' as the row index.
+        Save it to .csv file.
+        """
+        trains = {k: np.mean(v) for k, v in self._train_losses.items()}
+        vals = {k: np.mean(v) for k, v in self._val_losses.items()}
+        df = pd.DataFrame({"Epoch": list(trains.keys()),
+                           "Train Losses": list(trains.values()),
+                           "Val Losses": list(vals.values()), })
+        df.to_csv(os.path.join(file_path, experiment_name + "_losses.csv"), sep=';')
 
 
 class TensorboardCallback(Metric):
@@ -114,6 +149,10 @@ class TensorboardCallback(Metric):
     """
     def __init__(self, log_dir: str):
         super(TensorboardCallback, self).__init__()
+        self._log_dir = log_dir
+
+        # Create log dir if not exists and clear it otherwise
+        clear_logs_dir(self._log_dir, ignore_errors=True)
         self._writer = SummaryWriter(log_dir=log_dir)
 
     def __call__(self, outputs: torch.Tensor, target: torch.Tensor,
@@ -127,12 +166,55 @@ class TensorboardCallback(Metric):
             self._writer.add_scalar('loss/unknown', loss, epoch_num)
         return self.value()
 
+    def on_start(self):
+        pass
+
     def reset(self):
         pass
 
     def value(self) -> str:
         return "Tensorboard running"
 
+    def on_close(self):
+        pass
+
     @classmethod
     def name(cls) -> str:
         return 'TensorboardCallback'
+
+
+class ProgressbarCallback(Metric):
+    """
+    Works with all models INSIDE EPOCH.
+    Collect loss items during training epoch and show progress (inside each epoch).
+    """
+    def __init__(self, batches: int, epoch: int):
+        super(ProgressbarCallback, self).__init__()
+        self._current_epoch = 0
+        self._batches_per_epoch = batches
+        self._pbar = None
+
+    def __call__(self, outputs: torch.Tensor, target: torch.Tensor,
+                 loss: torch.Tensor, loss_type: str, epoch_num: int) -> str:
+        self._pbar.update(n=1)
+        return self.value()
+
+    def on_start(self):
+        self._pbar = tqdm.tqdm(total=self._batches_per_epoch,
+                               desc='Epoch {}'.format(self._current_epoch))
+        self._current_epoch += 1
+        logger.debug(f"Progress bar stated {self._current_epoch} epoch with {self._batches_per_epoch} batches.")
+
+    def reset(self):
+        self._pbar.reset()
+
+    def value(self) -> str:
+        return ""
+
+    def on_close(self):
+        self._pbar.close()
+        logger.debug(f"Progress bar restored after {self._current_epoch} epochs.")
+
+    @classmethod
+    def name(cls) -> str:
+        return 'ProgressbarCallback'

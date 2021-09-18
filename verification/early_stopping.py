@@ -1,6 +1,4 @@
 import os
-import sys
-sys.path.insert(0, "..")
 import torch
 import numpy as np
 from datetime import datetime
@@ -50,6 +48,9 @@ class EarlyStopping:
             self._best_score = score
             self.save_checkpoint(val_loss, model)
             self._counter = 0
+
+    def need_to_stop(self) -> bool:
+        return self._early_stop
 
     def save_checkpoint(self, val_loss, model):
         """

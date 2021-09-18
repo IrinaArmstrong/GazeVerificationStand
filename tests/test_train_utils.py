@@ -6,6 +6,7 @@ from pathlib import Path
 from helpers import read_json
 from config import config, init_config
 from verification.train_dataloaders import create_training_dataloaders
+from verification.train_utils import clear_logs_dir
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -43,7 +44,27 @@ class TestTraining(unittest.TestCase):
         self.assertIn("train", list(dataloaders.keys()))
         self.assertIn("validation", list(dataloaders.keys()))
 
-    # def test_save_load_model(self):
+    def test_clear_logger_dir(self):
+        # Create nested directories
+        parent_dir_l1 = (self._current_base_path / "test_dir_l1")
+        parent_dir_l1.mkdir(exist_ok=True)
+        parent_dir_l2 = (parent_dir_l1 / "test_dir_l2")
+        parent_dir_l2.mkdir(exist_ok=True)
+
+        new_fn = "test.txt"
+        filepath = parent_dir_l2 / new_fn
+        with filepath.open("w", encoding="utf-8") as f:
+            f.write("Test clearing directory...")
+
+        logger.info(f"Level 1: {parent_dir_l1}")
+        logger.info(f"Level 2: {parent_dir_l2}")
+        logger.info(f"Level 3, file: {filepath}")
+
+        clear_logs_dir(str(parent_dir_l1), ignore_errors=False)
+        self.assertTrue(parent_dir_l1.exists())
+        parent_dir_l1.rmdir()
+
+        # def test_save_load_model(self):
     #     parameters = dict(read_json(config.get("GazeVerification", "model_params")))
     #     model = EmbeddingNet(**parameters.get("model_params"))
     #     # Saving final version

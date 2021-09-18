@@ -1,5 +1,7 @@
 # Basic
 import datetime
+import os
+import traceback
 from pathlib import Path
 
 import umap
@@ -231,15 +233,29 @@ def plot_embeddings_2D(embeddings: np.ndarray, targets: np.ndarray):
     plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / 'embeddings.html'))
 
 
-def visualize_training_process(loss_fn: str):
+def visualize_training_process(loss_file_path: str, save_path: str = None):
+    """
+    Plot train and validation curves from file dats.
+    """
+    loss_file_path = Path(loss_file_path).resolve()
+    if not loss_file_path.exists():
+        logger.error(f"Provided losses file path does not exist: {str(loss_file_path)}")
+        logger.error(f"No visualizations will be created.")
+        return
+    try:
+        df_stats = pd.read_csv(loss_file_path, sep=';', index_col=0)
+    except Exception as ex:
+        logger.error(f"Exception occurred during visualization: {traceback.print_tb(ex.__traceback__)}")
+        logger.error(f"No visualizations will be created.")
+        return
 
-    df_stats = pd.read_csv(loss_fn, sep=';', index_col=0)
     fig = go.Figure()
-
-    fig.add_trace(go.Scatter(x=df_stats['Epoch'], y=df_stats['Train Losses'],
+    fig.add_trace(go.Scatter(x=df_stats['Epoch'],
+                             y=df_stats['Train Losses'],
                              mode='lines+markers',
                              name='Функция потерь на обучающей выборке'))
-    fig.add_trace(go.Scatter(x=df_stats['Epoch'], y=df_stats['Val Losses'],
+    fig.add_trace(go.Scatter(x=df_stats['Epoch'],
+                             y=df_stats['Val Losses'],
                              mode='lines+markers',
                              name='Функция потерь на валидационной выборке'))
     fig.update_layout(title='Динамика функции потерь при обучении',
@@ -267,5 +283,8 @@ def visualize_training_process(loss_fn: str):
                       )
 
     fig.update_layout(showlegend=True)
-    plotly.offline.plot(fig, filename=f'./output/loss_plot_{loss_fn.split("/")[-1].split(".")[0]}.html')
+    if save_path is not None:
+        plotly.offline.plot(fig, filename=os.path.join(save_path, 'train_validation_losses_plot.html'))
+    else:
+        fig.show()
 
