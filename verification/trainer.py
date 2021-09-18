@@ -14,7 +14,7 @@ from models.prototypical_model import EmbeddingNet
 from verification.early_stopping import EarlyStopping
 from verification.loss import PrototypicalLoss
 from visualization import visualize_training_process
-from verification.train_metrics import LossCallback, TensorboardCallback
+from verification.metrics import LossCallback, TensorboardCallback
 from verification.train_utils import (seed_everything, clear_logs_dir,
                                       copy_data_to_device, save_losses_to_file,
                                       save_model)
@@ -120,9 +120,24 @@ class Trainer:
                 f"Exception occurred during initializing lr_scheduler: {traceback.print_tb(ex.__traceback__)}")
             raise ex
 
-        self._metrics = [LossCallback(),
-                         TensorboardCallback(log_dir=self.__training_parameters.get("tensorboard_log_dir", "tblogs"))]
+        # Metrics
+        self.__metrics = []
+        metrics = kwargs.get('metrics', None)
+        # Metrics not provided
+        if metrics is None:
+            logger.error(f"No metrics list provided in kwargs for training, set default: Loss Callback")
+            self.__metrics = [LossCallback()]
+        # Metrics are user provided
+        else:
+            for metric in metrics:
+                try:
+                    metrics_params = self.__training_parameters.get("metrics_kwargs", {}).get(metric.name(), {})
+                    self.__metrics.append(metric(**metrics_params))
+                except Exception as ex:
+                    logger.error(
+                        f"Exception occurred during initializing metric: {traceback.print_tb(ex.__traceback__)}")
 
+        logger.info(f"Metrics for training: {[m.name() for m in self.__metrics]}")
 
     def fit(self, train_loader:  torch.utils.data.DataLoader,
             val_loader: torch.utils.data.DataLoader) -> nn.Module:
@@ -170,7 +185,7 @@ class Trainer:
                                                                                  "training_options",
                                                                                  {}).get("n_epochs", 0),
                                                                              train_loss)
-            for metric in self._metrics:
+            for metric in self.__metrics:
                 message += '\t{}: {}'.format(metric.name(), metric.value())
 
             val_loss = self._test_epoch(val_loader)
@@ -185,7 +200,7 @@ class Trainer:
                                                                                          "training_options",
                                                                                          {}).get("n_epochs", 0),
                                                                                      val_loss)
-            for metric in self._metrics:
+            for metric in self.__metrics:
                 message += '\t{}: {}'.format(metric.name(), metric.value())
             logger.info(message)
 
@@ -202,7 +217,7 @@ class Trainer:
                                                           {}).get("model_name", "model") + "_last_epoch.pt")
 
         # Get loss history from LossCallback. Always first.
-        save_losses_to_file(self._metrics[0].train_losses, self._metrics[0].train_losses,
+        save_losses_to_file(self.__metrics[0]._train_losses, self.__metrics[0]._train_losses,
                             save_path=self.__general_parameters.get("training_options", {}).get("output_dir", "."),
                             model_name=self.__general_parameters.get("training_options",
                                                                      {}).get("model_name", "model"))
@@ -222,7 +237,7 @@ class Trainer:
     def _train_epoch(self, train_loader: torch.utils.data.DataLoader,
                      epoch_num: int):
 
-        for metric in self._metrics:
+        for metric in self.__metrics:
             metric.reset()
 
         self.__model.train()
@@ -268,7 +283,7 @@ class Trainer:
             loss.backward()
             self.__optimizer.step()
 
-            for metric in self._metrics:
+            for metric in self.__metrics:
                 metric(outputs, target[0], loss.item(), "train", epoch_num)
 
             if batch_idx % self.__general_parameters.get("training_options", {}).get("log_interval", False) == 0:
@@ -276,7 +291,7 @@ class Trainer:
                 message = 'Train: [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                     batch_idx * len(data[0]), len(train_loader.dataset),
                     100. * batch_idx / len(train_loader), np.mean(losses))
-                for metric in self._metrics:
+                for metric in self.__metrics:
                     message += '\t{}: {}'.format(metric.name(), metric.value())
 
                 logger.info(message)
@@ -288,7 +303,7 @@ class Trainer:
     def _test_epoch(self, val_loader: torch.utils.data.DataLoader,
                     epoch_num: int):
         with torch.no_grad():
-            for metric in self._metrics:
+            for metric in self.__metrics:
                 metric.reset()
 
             self.__model.eval()
@@ -325,7 +340,7 @@ class Trainer:
                 val_loss += loss.item()
                 accs.append(acc.item())
 
-                for metric in self._metrics:
+                for metric in self.__metrics:
                     metric(outputs, target[0], loss.item(), "val", epoch_num)
 
         return val_loss

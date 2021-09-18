@@ -26,7 +26,11 @@
     "start_epoch": 0,
     "log_interval": 100,
     "es_patience":  10,
-    "tensorboard_log_dir": "tblogs",
+    "metrics_kwargs": {
+      "TensorboardCallback": {
+        "tensorboard_log_dir": "tblogs"
+      }
+    },
     "to_unsqueeze": false,
     "output_dir": "output",
     "model_name": "prototypical_test_model",
