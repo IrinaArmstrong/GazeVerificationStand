@@ -162,7 +162,7 @@ def seed_everything(seed_value: int) -> NoReturn:
         torch.backends.cudnn.benchmark = True
 
 
-def clean_GPU_memory() -> NoReturn:
+def clean_GPU_memory():
     torch.cuda.empty_cache()
 
 

@@ -4,8 +4,10 @@ import torch.nn.functional as F
 
 # -------------- Convolutional Block Attention Module (CBAM) -----------
 
+
 # Channel Attention Module
 class Flatten(nn.Module):
+    """ Layer for flattening n-dimensional input tensors to [dim_0, -1] shape. """
     def forward(self, x):
         return x.view(x.size(0), -1)
 
@@ -18,35 +20,37 @@ def logsumexp_2d(tensor):
 
 
 class ChannelGate(nn.Module):
+    """
+    The implementation of the Channel Attention block.
+    """
     def __init__(self, gate_channels, reduction_ratio=16,
-                 pool_types=['avg', 'max']):
+                 pool_types=('avg', 'max')):
         super(ChannelGate, self).__init__()
-        self.gate_channels = gate_channels
-        self.mlp = nn.Sequential(
+        self._gate_channels = gate_channels
+        self._mlp = nn.Sequential(
             Flatten(),
             nn.Linear(gate_channels, gate_channels // reduction_ratio),
             nn.ReLU(),
             nn.Linear(gate_channels // reduction_ratio, gate_channels)
             )
-        self.pool_types = pool_types
-
+        self._pool_types = pool_types
 
     def forward(self, x):
         channel_att_sum = None
-        for pool_type in self.pool_types:
-            if pool_type=='avg':
+        for pool_type in self._pool_types:
+            if pool_type == 'avg':
                 avg_pool = F.avg_pool1d( x, x.size(2), stride=x.size(2))
-                channel_att_raw = self.mlp( avg_pool )
-            elif pool_type=='max':
+                channel_att_raw = self._mlp(avg_pool)
+            elif pool_type == 'max':
                 max_pool = F.max_pool1d( x, x.size(2), stride=x.size(2))
-                channel_att_raw = self.mlp( max_pool )
-            elif pool_type=='lp':
+                channel_att_raw = self._mlp(max_pool)
+            elif pool_type == 'lp':
                 lp_pool = F.lp_pool1d( x, 2, x.size(2), stride=x.size(2))
-                channel_att_raw = self.mlp( lp_pool )
-            elif pool_type=='lse':
+                channel_att_raw = self._mlp(lp_pool)
+            elif pool_type == 'lse':
                 # LSE pool only
                 lse_pool = logsumexp_2d(x)
-                channel_att_raw = self.mlp( lse_pool )
+                channel_att_raw = self._mlp(lse_pool)
 
             if channel_att_sum is None:
                 channel_att_sum = channel_att_raw
@@ -58,6 +62,10 @@ class ChannelGate(nn.Module):
 
 # Spatial Attention Module (SAM)
 class BasicConv(nn.Module):
+    """
+    Applies a 1D convolution over an input signal with
+    following batch normalization and ReLu over output.
+    """
     def __init__(self, in_planes, out_planes, kernel_size,
                  stride=1, padding=0, dilation=1, groups=1,
                  relu=True, bn=True, bias=False):
@@ -78,28 +86,37 @@ class BasicConv(nn.Module):
             x = self.relu(x)
         return x
 
+
 class ChannelPool(nn.Module):
+    """ Make stack of Max Pooling and Average Pooling operations subsequently over input data. """
     def forward(self, x):
         return torch.cat((torch.max(x, 1)[0].unsqueeze(1),
-                          torch.mean(x, 1).unsqueeze(1)), dim=1 )
+                          torch.mean(x, 1).unsqueeze(1)), dim=1)
 
 
 class SpatialGate(nn.Module):
-    def __init__(self, kernel_size: int=3):
+    """
+    The implementation of the Spatial Attention mechanism
+    as 1d convolution over Max+Avg Pooled input with sigmoid activation in the end.
+    """
+    def __init__(self, kernel_size: int = 3):
         super(SpatialGate, self).__init__()
-        self.kernel_size = kernel_size
-        self.compress = ChannelPool()
-        self.spatial = BasicConv(2, 1, self.kernel_size, stride=1,
-                                 padding=(self.kernel_size-1) // 2, relu=False)
+        self._kernel_size = kernel_size
+        self._compress = ChannelPool()
+        self._spatial = BasicConv(2, 1, self._kernel_size, stride=1,
+                                  padding=(self._kernel_size - 1) // 2, relu=False)
 
     def forward(self, x):
-        x_compress = self.compress(x)
-        x_out = self.spatial(x_compress)
-        scale = F.sigmoid(x_out) # broadcasting
+        x_compress = self._compress(x)
+        x_out = self._spatial(x_compress)
+        scale = F.sigmoid(x_out)  # broadcasting
         return x * scale
 
 
 class CBAM(nn.Module):
+    """
+    Full convolutional bloch attention mechanism module (CBAM).
+    """
     def __init__(self, gate_channels, reduction_ratio=8,
                  pool_types=['avg', 'max'], no_spatial=False):
         super(CBAM, self).__init__()

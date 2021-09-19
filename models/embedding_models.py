@@ -6,15 +6,15 @@ import logging_handler
 logger = logging_handler.get_logger(__name__)
 
 
-class EmbeddingNet(nn.Module):
+class CNN1dCBAM_Net(nn.Module):
     """
     Base architecture for embeddings creation.
     """
     def __init__(self, embedding_size: int = 100):
-        super(EmbeddingNet, self).__init__()
+        super(CNN1dCBAM_Net, self).__init__()
         self._embedding_size = embedding_size
 
-        self.cnn1 = nn.Sequential(
+        self._cnn1 = nn.Sequential(
             nn.Conv1d(2, 128, kernel_size=3, stride=2),
             CBAM(gate_channels=128, reduction_ratio=16, no_spatial=True),
             nn.MaxPool1d(5, stride=2),
@@ -28,7 +28,7 @@ class EmbeddingNet(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        self.fc1 = nn.Sequential(
+        self._fc1 = nn.Sequential(
             nn.Linear(512, 256),
             nn.Dropout(0.5),
             nn.ReLU(inplace=True),
@@ -43,7 +43,7 @@ class EmbeddingNet(nn.Module):
     def forward(self, x):
         if len(x.size()) == 2:
             x = torch.unsqueeze(x, 1)
-        output = self.cnn1(x.float())
+        output = self._cnn1(x.float())
         output = output.view(output.size()[0], -1)
-        output = self.fc1(output)
+        output = self._fc1(output)
         return output

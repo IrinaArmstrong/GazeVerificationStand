@@ -1,4 +1,5 @@
 # Basic
+import gc
 import os
 import traceback
 import numpy as np
@@ -14,7 +15,8 @@ from helpers import read_json
 from verification.early_stopping import EarlyStopping
 from verification.metrics import LossCallback
 from visualizations.visualization import visualize_training_process
-from verification.train_utils import (seed_everything, copy_data_to_device, save_model)
+from verification.train_utils import (seed_everything, copy_data_to_device, save_model,
+                                      clean_GPU_memory)
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -262,7 +264,7 @@ class Trainer:
 
         return self.__model
 
-    def _train_epoch(self, train_loader: torch.utils.data.DataLoader, epoch_num: int):
+    def _train_epoch(self, train_loader: torch.utils.data.DataLoader, epoch_num: int) -> float:
         """
         Run a single epoch training step.
         """
@@ -274,14 +276,17 @@ class Trainer:
             else:
                 metric.on_start()
 
-        # Set to `train`mode
+        # Set to `train` mode
         self.__model.train()
         losses = []
         accuracies = []
         total_loss = 0
+        total_batches = 0
 
-        logger.info(f"---------------- Train step --------------------")
+        logger.info(f"---------------- Train epoch #{epoch_num} --------------------")
         for batch_idx, batch in enumerate(train_loader):
+            total_batches += 1
+
             # batch: [X_data_1 ... X_data_n, Y_data]
             data = batch[:-1]
             target = batch[-1]  # if do not need target - fill it with zeros
@@ -302,6 +307,7 @@ class Trainer:
 
             outputs = self.__model(*data)
             data = copy_data_to_device(data, "cpu")
+            outputs = copy_data_to_device(outputs, "cpu")
             if type(outputs) not in (tuple, list):
                 outputs = (outputs.float(),)
 
@@ -315,7 +321,6 @@ class Trainer:
                 loss_inputs += target
             loss_inputs += (self.__general_parameters.get("batching_options", {}).get("num_support_train", 10),)
 
-            # print("loss_inputs", loss_inputs)
             loss_outputs = self.__loss_fn(*loss_inputs)
             loss = loss_outputs[0] if type(loss_outputs) in (tuple, list) else loss_outputs
             acc = loss_outputs[1] if type(loss_outputs) in (tuple, list) else 0.0
@@ -327,50 +332,79 @@ class Trainer:
             loss.backward()
             self.__optimizer.step()
 
-            for metric in self.__metrics:
+            # Clean memory on CUDA
+            if self.__device.type == "cuda":
+                clean_GPU_memory()
+            _ = gc.collect()
+
+            for metric_name, metric in self.__metrics.items():
                 metric(outputs, target[0], loss.item(), "train", epoch_num)
 
-            if batch_idx % self.__general_parameters.get("training_options", {}).get("log_interval", False) == 0:
-
+            if batch_idx % self.__training_parameters.get("log_interval", 1) == 0:
                 message = 'Train: [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                     batch_idx * len(data[0]), len(train_loader.dataset),
                     100. * batch_idx / len(train_loader), np.mean(losses))
-                for metric in self.__metrics:
-                    message += '\t{}: {}'.format(metric.name(), metric.value())
-
+                for metric_name, metric in self.__metrics.items():
+                    message += f'\t{metric_name}: {metric.value()}'
                 logger.info(message)
                 losses = []
+                accuracies = []
 
-        total_loss /= (batch_idx + 1)
+        # On batch end metrics actions
+        for metric_name, metric in self.__metrics.items():
+            metric.on_close()
+
+        total_loss /= (total_batches + 1)
+        logger.info(f"Epoch #{epoch_num} total loss: {total_loss}")
         return total_loss
 
-    def _test_epoch(self, val_loader: torch.utils.data.DataLoader,
-                    epoch_num: int):
+    def _test_epoch(self, val_loader: DataLoader, epoch_num: int) -> float:
+        """
+        Run a single epoch training step.
+        """
+        total_batches = 0
+        # No gradient tape inside validation step
         with torch.no_grad():
-            for metric in self.__metrics:
-                metric.reset()
 
+            # Reset metric states
+            for metric_name, metric in self.__metrics.items():
+                metric.reset()
+                if metric_name == "ProgressbarCallback":
+                    metric.on_start(len(val_loader))
+
+            # Set to `eval` mode
             self.__model.eval()
+
             val_loss = 0
-            accs = []
-            logger.info(f"---------------- Validation step --------------------")
+            accuracies = []
+
+            logger.info(f"---------------- Validation step of epoch #{epoch_num} --------------------")
             for batch_idx, batch in enumerate(val_loader):
+                total_batches += 1
+
+                # batch: [X_data_1 ... X_data_n, Y_data]
                 data = batch[:-1]
-                target = batch[-1]
-                target = target if len(target) > 0 else None
+                target = batch[-1]  # if do not need target - fill it with zeros
+
+                if len(torch.nonzero(target, as_tuple=False)) == 0:
+                    target = None
+                    logger.warning(f"Target values were not passed to validation function")
+                else:
+                    target = copy_data_to_device(target, self.__device)
+
                 if not type(data) in (tuple, list):
                     data = (data,)
                 data = copy_data_to_device(data, self.__device)
-                if target is not None:
-                    target = copy_data_to_device(target, self.__device)
 
                 outputs = self.__model(*data)
-
+                _ = copy_data_to_device(data, "cpu")
+                outputs = copy_data_to_device(outputs, "cpu")
                 if type(outputs) not in (tuple, list):
                     outputs = (outputs.float(),)
+
                 loss_inputs = outputs
                 if target is not None:
-                    if bool(self.__general_parameters.get("training_options", {}).get("to_unsqueeze", False)):
+                    if bool(self.__training_parameters.get("to_unsqueeze", False)):
                         target = (target.float().unsqueeze(1),)
                     else:
                         target = (target.float(),)
@@ -382,10 +416,18 @@ class Trainer:
                 acc = loss_outputs[1] if type(loss_outputs) in (tuple, list) else 0.0
 
                 val_loss += loss.item()
-                accs.append(acc.item())
+                accuracies.append(acc.item())
 
-                for metric in self.__metrics:
+                # Clean memory on CUDA
+                if self.__device.type == "cuda":
+                    clean_GPU_memory()
+                _ = gc.collect()
+
+                # Get metrics for validation
+                for metric_name, metric in self.__metrics.items():
                     metric(outputs, target[0], loss.item(), "val", epoch_num)
 
+        val_loss /= (total_batches + 1)
+        logger.info(f"Epoch #{epoch_num} total loss: {val_loss}")
         return val_loss
 

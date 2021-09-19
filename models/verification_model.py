@@ -1,6 +1,4 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 import logging_handler
 logger = logging_handler.get_logger(__name__)
@@ -13,16 +11,16 @@ class VerificationNet(nn.Module):
     """
     def __init__(self, embedding_net):
         super(VerificationNet, self).__init__()
-        self.embedding_net = embedding_net
-        self.relu = nn.ReLU()
+        self._embedding_net = embedding_net
+        self._relu = nn.ReLU()
 
     def __str__(self):
         return self.__class__.__name__
 
     def forward_one(self, x):
-        output = self.embedding_net(x)
+        output = self._embedding_net(x)
         output = output.view(output.size()[0], -1)
-        output = self.relu(output)
+        output = self._relu(output)
         return output
 
     def forward(self, x1, x2):
@@ -32,4 +30,4 @@ class VerificationNet(nn.Module):
         return dist
 
     def get_embedding(self, x):
-        return self.nonlinear(self.embedding_net(x))
+        return self.nonlinear(self._embedding_net(x))
