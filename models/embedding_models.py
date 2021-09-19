@@ -37,6 +37,9 @@ class EmbeddingNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(128, self._embedding_size))
 
+    def __str__(self):
+        return self.__class__.__name__
+
     def forward(self, x):
         if len(x.size()) == 2:
             x = torch.unsqueeze(x, 1)

@@ -16,6 +16,9 @@ class VerificationNet(nn.Module):
         self.embedding_net = embedding_net
         self.relu = nn.ReLU()
 
+    def __str__(self):
+        return self.__class__.__name__
+
     def forward_one(self, x):
         output = self.embedding_net(x)
         output = output.view(output.size()[0], -1)

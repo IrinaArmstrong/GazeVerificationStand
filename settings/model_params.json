@@ -1,4 +1,5 @@
 {
+  "experiment_name": "test_proto_net",
   "model_params": {
     "embedding_size": 20
   },

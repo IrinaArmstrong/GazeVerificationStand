@@ -22,7 +22,7 @@ class Metric:
                  loss: torch.Tensor, loss_type: str, epoch_num: int):
         raise NotImplementedError
 
-    def on_start(self):
+    def on_start(self, **kwargs):
         raise NotImplementedError
 
     def reset(self):
@@ -31,7 +31,7 @@ class Metric:
     def value(self):
         raise NotImplementedError
 
-    def on_close(self):
+    def on_close(self, **kwargs):
         raise NotImplementedError
 
     @classmethod
@@ -68,7 +68,7 @@ class AccumulatedAccuracyMetric(Metric):
             logger.error(f"Unknown loss type: {loss_type}")
         return self.value()
 
-    def on_start(self):
+    def on_start(self, **kwargs):
         pass
 
     def reset(self):
@@ -84,7 +84,7 @@ class AccumulatedAccuracyMetric(Metric):
         return (100 * float(self._train_correct) / (self._train_total + sys.float_info.epsilon),
                 100 * float(self._val_correct) / (self._val_total + sys.float_info.epsilon))
 
-    def on_close(self):
+    def on_close(self, **kwargs):
         pass
 
     @classmethod
@@ -112,7 +112,7 @@ class LossCallback(Metric):
             logger.error(f"Unknown loss type: {loss_type}")
         return self.value()
 
-    def on_start(self):
+    def on_start(self, **kwargs):
         pass
 
     def reset(self):
@@ -122,7 +122,7 @@ class LossCallback(Metric):
         return (np.mean(self._train_losses.get(max(self._train_losses.keys()))),
                 np.mean(self._val_losses.get(max(self._val_losses.keys()))))
 
-    def on_close(self):
+    def on_close(self, **kwargs):
         pass
 
     @classmethod
@@ -166,7 +166,7 @@ class TensorboardCallback(Metric):
             self._writer.add_scalar('loss/unknown', loss, epoch_num)
         return self.value()
 
-    def on_start(self):
+    def on_start(self, **kwargs):
         pass
 
     def reset(self):
@@ -175,7 +175,7 @@ class TensorboardCallback(Metric):
     def value(self) -> str:
         return "Tensorboard running"
 
-    def on_close(self):
+    def on_close(self, **kwargs):
         pass
 
     @classmethod
@@ -188,10 +188,9 @@ class ProgressbarCallback(Metric):
     Works with all models INSIDE EPOCH.
     Collect loss items during training epoch and show progress (inside each epoch).
     """
-    def __init__(self, batches: int, epoch: int):
+    def __init__(self):
         super(ProgressbarCallback, self).__init__()
         self._current_epoch = 0
-        self._batches_per_epoch = batches
         self._pbar = None
 
     def __call__(self, outputs: torch.Tensor, target: torch.Tensor,
@@ -199,11 +198,12 @@ class ProgressbarCallback(Metric):
         self._pbar.update(n=1)
         return self.value()
 
-    def on_start(self):
-        self._pbar = tqdm.tqdm(total=self._batches_per_epoch,
+    def on_start(self, **kwargs):
+        batches_per_epoch = kwargs.get("batches_per_epoch", 1)
+        self._pbar = tqdm.tqdm(total=batches_per_epoch,
                                desc='Epoch {}'.format(self._current_epoch))
         self._current_epoch += 1
-        logger.debug(f"Progress bar stated {self._current_epoch} epoch with {self._batches_per_epoch} batches.")
+        logger.debug(f"Progress bar stated {self._current_epoch} epoch with {batches_per_epoch} batches.")
 
     def reset(self):
         self._pbar.reset()
@@ -211,7 +211,7 @@ class ProgressbarCallback(Metric):
     def value(self) -> str:
         return ""
 
-    def on_close(self):
+    def on_close(self, **kwargs):
         self._pbar.close()
         logger.debug(f"Progress bar restored after {self._current_epoch} epochs.")
 

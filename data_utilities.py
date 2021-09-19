@@ -14,7 +14,6 @@ import logging_handler
 from helpers import read_json
 logger = logging_handler.get_logger(__name__)
 
-#---------------------------- PREPROCESSING UTILITIES ----------------------------
 
 def groupby_session(data: pd.DataFrame,
                     filter_threshold: int=50) -> List[pd.DataFrame]:

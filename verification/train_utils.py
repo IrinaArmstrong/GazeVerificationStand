@@ -68,7 +68,7 @@ def evaluate_verification(model: torch.nn.Module, dataloader,
             pred_labels.extend(batch_pred)
 
     # Measure how long the validation run took.
-    validation_time = format_time(time.time() - eval_start)
+    validation_time = str(time.time() - eval_start)
 
     if estim_quality and print_metrics:
         compute_metrics(true_labels, pred_labels)
@@ -140,7 +140,7 @@ def create_embeddings(model: torch.nn.Module, dataloader,
             embeddings.append(embedding)
 
     # Measure how long the validation run took.
-    validation_time = format_time(time.time() - eval_start)
+    validation_time = str(time.time() - eval_start)
 
     logger.info("\tTime elapsed for evaluation: {:} with {} samples.".format(validation_time, len(dataloader.dataset)))
     if estim_quality:
@@ -174,15 +174,6 @@ def copy_data_to_device(data, device):
     raise ValueError('Invalid data type {}'.format(type(data)))
 
 
-def format_time(elapsed: timedelta):
-    """
-    Service function. Pre-process timestamps during training.
-    :param elapsed: time in seconds;
-    :return: string with format: hh:mm:ss
-    """
-    return str(elapsed)
-
-
 def init_model(model: nn.Module, parameters: Dict[str, Any],
                dir: str='models_checkpoints',
                filename: str='model.pt') -> nn.Module:
@@ -195,16 +186,16 @@ def init_model(model: nn.Module, parameters: Dict[str, Any],
     return model
 
 
-def save_model(model: nn.Module, dir: str='models_checkpoints',
-               filename: str='model.pt'):
+def save_model(model: nn.Module, save_dir: str, filename: str):
     """
     Trained model, configuration and tokenizer,
     they can then be reloaded using `from_pretrained()` if using default names.
+    - save_dir - full path for directory where it is chosen to save model
+    - filename - unique file name for model weights
     """
     # Take care of distributed/parallel training
     model_to_save = model.module if hasattr(model, 'module') else model.state_dict()
-    torch.save(model_to_save, os.path.join(sys.path[0], dir, filename))
-    # models_checkpoints
+    torch.save(model_to_save, os.path.join(save_dir, filename))
     logger.info("Model successfully saved.")
 
 
@@ -222,7 +213,7 @@ def load_model(model, dir: str, filename: str):
 def compute_metrics(true_labels: List[int],
                     pred_labels: List[int]) -> NoReturn:
 
-    print("***** Eval results *****")
+    logger.info("***** Eval results *****")
     ac = accuracy_score(true_labels, pred_labels)
     bac = balanced_accuracy_score(true_labels, pred_labels)
 

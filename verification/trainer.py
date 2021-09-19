@@ -38,15 +38,53 @@ class Trainer:
 
         logger.info(f"Loading training model parameters from {parameters_fn}")
         self.__general_parameters = dict(read_json(parameters_fn))
+
+        # The most appropriate way for providing experiment name is from upper entity - Stand/Experimenter class
+        # in this case all folders already created (for training stats/checkpoints/output visualizations)
+        if kwargs.get("experiment_name", None) is not None:
+            self.__experiment_name = kwargs.get("experiment_name")
+        else:
+            # But in some cases it can be set manually here
+            self.__experiment_name = self.__general_parameters.get("experiment_name",
+                                                                   f"exp_{datetime.now().strftime('%Y.%m.%d-%H:%M:%S')}")
+        logger.info(f"Experiment {self.__experiment_name} setup started...")
         self.__models_parameters = self.__general_parameters.get("model_params", {})
         self.__batching_parameters = self.__general_parameters.get("batching_options", {})
         self.__training_parameters = self.__general_parameters.get("training_options", {})
         logger.info(f"Training general parameters: {self.__general_parameters}")
+        self.__create_folders()
 
         # Set device type
         self.__acquire_device()
-        self.__init_train_options(kwargs)
+        self.__init_train_options(**kwargs)
         seed_everything(seed_value=11)
+
+    def __create_folders(self):
+        """
+        Create directories for:
+        - checkpoints
+        - training statistics output (loss file and visualizations, if required)
+        """
+        logger.info(f"Experiment: {self.__experiment_name}, create folders")
+        self.__current_base_dir = Path(__file__).resolve().parent.parent
+        logger.debug(f"From base folder: {self.__current_base_dir}")
+
+        # Create checkpoints directory
+        base_checkpoints_dir = self.__current_base_dir / self.__training_parameters.get("checkpoints_dir",
+                                                                                        "checkpoints_dir")
+        if not base_checkpoints_dir.exists():
+            base_checkpoints_dir.mkdir(exist_ok=True)
+        self.__checkpoints_dir = base_checkpoints_dir / self.__experiment_name
+        self.__checkpoints_dir.mkdir(exist_ok=True)
+        logger.info(f"Created checkpoints directory for current experiment: {self.__checkpoints_dir}")
+
+        # Create training statistics output directory
+        base_output_dir = self.__current_base_dir / self.__training_parameters.get("output_dir", ".")
+        if not base_output_dir.exists():
+            base_output_dir.mkdir(exist_ok=True)
+        self.__output_dir = base_checkpoints_dir / self.__experiment_name
+        self.__output_dir.mkdir(exist_ok=True)
+        logger.info(f"Created training statistics output directory for current experiment: {self.__output_dir}")
 
     def __acquire_device(self):
         """ Init training device. """
@@ -164,7 +202,7 @@ class Trainer:
         # initialize the early_stopping object
         early_stopping = EarlyStopping(patience=self.__training_parameters.get("es_patience", 0),
                                        verbose=True,
-                                       path=self.__training_parameters.get("checkpoints_dir", "checkpoints_dir"))
+                                       path=str(self.__checkpoints_dir))
 
         for epoch in range(self.__training_parameters.get("start_epoch", 0),
                            self.__training_parameters.get("n_epochs", 0)):
@@ -205,58 +243,72 @@ class Trainer:
 
         # Saving final version
         save_model(self.__model,
-                   dir=self.__training_parameters.get("checkpoints_dir", "checkpoints_dir"),
-                   filename=self.__training_parameters.get("model_name", "model") + "_last_epoch.pt")
+                   save_dir=str(self.__checkpoints_dir),  # should be full path!
+                   filename=f"{str(self.__experiment_name)}_{str(self.__model)}_last_epoch.pt")
 
         # Get loss history from LossCallback. Always first.
         loss_metric = self.__metrics.get(LossCallback.name(), None)
         if loss_metric is not None:
-            # todo: create separate folder for each experiment and provide it through kwargs - ???
-            loss_metric.to_file(file_path=self.__training_parameters.get("output_dir", "."))
+            loss_metric.to_file(file_path=str(self.__output_dir),  # should be full path!
+                                experiment_name=str(self.__experiment_name))
 
         # Save and show training history
         try:
-            visualize_training_process(loss_fn=os.path.join(self.__general_parameters.get("training_options",
-                                                                                          {}).get("output_dir", "."),
-                                                            self.__general_parameters.get(
-                                                                "training_options", {}).get("model_name", "model")
-                                                            + "_losses.csv"))
+            visualize_training_process(
+                loss_file_path=str(self.__output_dir / f"{str(self.__experiment_name)}_{str(self.__model)}_losses.csv"),
+                save_path=str(self.__output_dir / f"{str(self.__experiment_name)}_{str(self.__model)}_losses.html"))
         except FileNotFoundError:
             logger.error(f"Losses file not found for visualization.")
 
         return self.__model
 
-    def _train_epoch(self, train_loader: torch.utils.data.DataLoader,
-                     epoch_num: int):
-
-        for metric in self.__metrics:
+    def _train_epoch(self, train_loader: torch.utils.data.DataLoader, epoch_num: int):
+        """
+        Run a single epoch training step.
+        """
+        # Reset metric states
+        for metric_name, metric in self.__metrics.items():
             metric.reset()
+            if metric_name == "ProgressbarCallback":
+                metric.on_start(len(train_loader))
+            else:
+                metric.on_start()
 
+        # Set to `train`mode
         self.__model.train()
         losses = []
-        accs = []
+        accuracies = []
         total_loss = 0
+
         logger.info(f"---------------- Train step --------------------")
         for batch_idx, batch in enumerate(train_loader):
+            # batch: [X_data_1 ... X_data_n, Y_data]
             data = batch[:-1]
-            target = batch[-1]
+            target = batch[-1]  # if do not need target - fill it with zeros
 
-            target = target if len(target) > 0 else None
-            if not type(data) in (tuple, list):
-                data = (data,)
-
-            data = copy_data_to_device(data, self.__device)
-            if target is not None:
+            if len(torch.nonzero(target, as_tuple=False)) == 0:
+                target = None
+                logger.warning(f"Target values were not passed to training function")
+            else:
                 target = copy_data_to_device(target, self.__device)
 
+            if not type(data) in (tuple, list):
+                data = (data,)
+            data = copy_data_to_device(data, self.__device)
+
+            # Need to explicitly set the gradients to zero before starting to do backpropragation
+            # Cause PyTorch accumulates the gradients on subsequent backward passes
             self.__optimizer.zero_grad()
+
             outputs = self.__model(*data)
+            data = copy_data_to_device(data, "cpu")
             if type(outputs) not in (tuple, list):
                 outputs = (outputs.float(),)
 
             loss_inputs = outputs
             if target is not None:
-                if bool(self.__general_parameters.get("training_options", {}).get("to_unsqueeze", False)):
+                target = copy_data_to_device(target, "cpu")
+                if bool(self.__training_parameters.get("to_unsqueeze", False)):
                     target = (target.float().unsqueeze(1),)
                 else:
                     target = (target.float(),)
@@ -269,7 +321,7 @@ class Trainer:
             acc = loss_outputs[1] if type(loss_outputs) in (tuple, list) else 0.0
 
             losses.append(loss.item())
-            accs.append(acc.item())
+            accuracies.append(acc.item())
 
             total_loss += loss.item()
             loss.backward()

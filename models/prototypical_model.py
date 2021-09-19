@@ -19,6 +19,9 @@ class PrototypeNet(nn.Module):
         self._net = embedding_net
         self._has_prototypes = False
 
+    def __str__(self):
+        return self.__class__.__name__
+
     def _get_embeddings(self, batch):
         return self._net(batch)
 
