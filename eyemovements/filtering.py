@@ -5,6 +5,9 @@ from tqdm import tqdm
 from scipy.signal import savgol_filter
 from typing import List
 
+import logging_handler
+logger = logging_handler.get_logger(__name__)
+
 
 def sgolay2d(z: np.ndarray, window_size: int, order: int, derivative=None):
     """
@@ -18,11 +21,13 @@ def sgolay2d(z: np.ndarray, window_size: int, order: int, derivative=None):
     """
     # Number of terms in the polynomial expression
     n_terms = (order + 1) * (order + 2) / 2.0
+    logger.debug(f"Number of terms in the polynomial expression: {n_terms}")
 
     if window_size % 2 == 0:
         raise ValueError('_window_size must be odd')
 
     if window_size ** 2 < n_terms:
+        logger.error(f"{order} order is too high for the window size = {window_size}")
         raise ValueError('order is too high for the window size')
 
     half_size = window_size // 2
@@ -93,7 +98,6 @@ def sgolay2d(z: np.ndarray, window_size: int, order: int, derivative=None):
         c = np.linalg.pinv(A)[1].reshape((window_size, -1))
         r = np.linalg.pinv(A)[2].reshape((window_size, -1))
         return scipy.signal.fftconvolve(Z, -r, mode='valid'), scipy.signal.fftconvolve(Z, -c, mode='valid')
-
 
 
 def sgolay_filter_dataset(dataset: List[pd.DataFrame], window_size: int = 15,

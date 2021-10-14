@@ -16,7 +16,7 @@ logger = logging_handler.get_logger(__name__)
 
 
 def groupby_session(data: pd.DataFrame,
-                    filter_threshold: int=50) -> List[pd.DataFrame]:
+                    filter_threshold: int = 50) -> List[pd.DataFrame]:
     """
     Group data by sessions.
     :param data: single DataFrame with all recorded sessions
@@ -29,7 +29,7 @@ def groupby_session(data: pd.DataFrame,
         group['session_id'] = group_name[1]
         if group.shape[0] > filter_threshold:
             sess_data.append(group)
-    print(f"Resulted list of data length: {len(sess_data)}")
+    logger.info(f"Resulted list of data length: {len(sess_data)}")
     del data
     return sess_data
 
@@ -38,7 +38,7 @@ def horizontal_align_data(df: pd.DataFrame,
                           grouping_cols: Union[str, List[str]],
                           aligning_cols: List[str]) -> pd.DataFrame:
     if len(aligning_cols) != 2:
-        print("Should be given two separate columns of coordinates.")
+        logger.error("Should be given two separate columns of coordinates.")
         return df
 
     hdf = []
