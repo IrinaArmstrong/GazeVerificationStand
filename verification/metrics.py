@@ -119,8 +119,11 @@ class LossCallback(Metric):
         pass
 
     def value(self) -> Tuple[float, float]:
-        return (np.mean(self._train_losses.get(max(self._train_losses.keys()))),
-                np.mean(self._val_losses.get(max(self._val_losses.keys()))))
+        value = (np.mean(self._train_losses.get(max(self._train_losses.keys())))
+                 if len(self._train_losses) else 0.0,
+                 np.mean(self._val_losses.get(max(self._val_losses.keys())))
+                 if len(self._val_losses) else 0.0)
+        return value
 
     def on_close(self, **kwargs):
         pass
