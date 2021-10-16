@@ -7,6 +7,7 @@ def read_json(path: str) -> List[Dict[str, Any]]:
         data = json.load(f)
     return data
 
+
 def write_json(path: str, data: Dict[str, Any]) -> NoReturn:
     with open(path, "w", encoding='utf-8') as f:
         json.dump(data, f)

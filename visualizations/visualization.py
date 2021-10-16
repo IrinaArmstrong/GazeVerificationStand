@@ -233,7 +233,8 @@ def plot_embeddings_2D(embeddings: np.ndarray, targets: np.ndarray):
     plotly.offline.plot(fig, filename=str(Path(config.get("Basic", "output_dir")) / 'embeddings.html'))
 
 
-def visualize_training_process(loss_file_path: str, save_path: str = None):
+def visualize_training_process(loss_file_path: str, save_path: str = None,
+                               renderer: str = None):
     """
     Plot train and validation curves from file dats.
     """
@@ -260,12 +261,12 @@ def visualize_training_process(loss_file_path: str, save_path: str = None):
                              name='Функция потерь на валидационной выборке'))
     fig.update_layout(title='Динамика функции потерь при обучении',
                       legend=dict(font=dict(
-                          family="Arial", size=14,
+                          family="Arial", size=14),
                           orientation="h",
                           yanchor="bottom",
                           y=1.02,
                           xanchor="right",
-                          x=1)),
+                          x=1),
                       xaxis=dict(
                           title='Эпохи',
                           titlefont=dict(
@@ -286,5 +287,8 @@ def visualize_training_process(loss_file_path: str, save_path: str = None):
     if save_path is not None:
         plotly.offline.plot(fig, filename=os.path.join(save_path, 'train_validation_losses_plot.html'))
     else:
-        fig.show()
-
+        if renderer is not None:
+            fig.show(renderer=renderer)
+        else:
+            # Use default one
+            fig.show()

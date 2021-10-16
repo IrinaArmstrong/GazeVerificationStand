@@ -199,15 +199,25 @@ def save_model(model: nn.Module, save_dir: str, filename: str):
     logger.info("Model successfully saved.")
 
 
-def load_model(model, dir: str, filename: str):
+def load_model(model, dir: Union[str, Path],
+               filename: str):
     """
     Loads a model’s parameter dictionary using a deserialized state_dict.
     :param model: model instance (uninitialized)
-    :param dir: folder/_path
+    :param dir: folder/_path - absolute!
     :param filename: state_dict filename
     :return: initialized model
     """
-    return model.load_state_dict(torch.load(os.path.join(sys.path[0], dir, filename)))
+    if type(dir) == str:
+        dir = Path(dir)
+    if not dir.resolve().exists():
+        logger.error(f"Provided dir do not exists: {dir}!")
+        return
+    fn = dir / filename
+    if not fn.exists():
+        logger.error(f"Provided model filename do not exists: {fn}!")
+        return
+    model.load_state_dict(torch.load(str(fn)))
 
 
 def compute_metrics(true_labels: List[int],

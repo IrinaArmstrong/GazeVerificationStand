@@ -55,7 +55,7 @@ class PrototypeNet(nn.Module):
         # Count distances from input data to prototypes
         dists = euclidean_dist(input_data, self._prototypes)
         log_p_y = F.log_softmax(-dists, dim=1).view(input_data.size(0), len(self._unique_classes))
-        pred_prototypes = torch.argmax(log_p_y, 1).numpy().astype(int)
+        pred_prototypes = torch.argmax(log_p_y, 1).to('cpu').numpy().astype(int)
 
         # Convert to classes
         pred_classes = [self._unique_classes[p] for p in pred_prototypes]
